@@ -6,7 +6,7 @@ interface Props {
   employee: Employee
 }
 
-export default function RouteTimeline({ steps, employee }: Props) {
+export default function RouteTimeline({ steps, employee: _employee }: Props) {
   if (steps.length === 0) {
     return <p style={{ color: '#94a3b8' }}>准备路由中...</p>
   }

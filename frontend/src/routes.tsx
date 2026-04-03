@@ -1,4 +1,5 @@
-import { Navigate, RouteObject } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
+import type { RouteObject } from 'react-router-dom'
 import LandingPage from './pages/LandingPage'
 import EmployerLayout from './features/employer/components/EmployerLayout'
 import EmployeesPage from './features/employer/pages/EmployeesPage'
