@@ -14,7 +14,6 @@
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query": "^5.96.1",
-    "autoprefixer": "^10.4.27",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.0",
