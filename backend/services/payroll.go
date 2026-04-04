@@ -35,6 +35,8 @@ func NewPayrollService(database *gorm.DB, cfg *config.Config) *PayrollService {
 	return &PayrollService{db: database, cfg: cfg, ethClient: client}
 }
 
+func (s *PayrollService) DB() *gorm.DB { return s.db }
+
 type Rule struct {
 	ChainID      *big.Int       `json:"chainId"`
 	TokenAddress common.Address  `json:"tokenAddress"`

@@ -51,7 +51,7 @@ type CreateEmployeeRequest struct {
 	PayFrequency  string `json:"pay_frequency" binding:"required"`
 }
 
-func (s *EmployeeService) Create(req CreateEmployeeRequest) (*db.Employee, error) {
+func (s *EmployeeService) Create(req CreateEmployeeRequest, employerAddress string) (*db.Employee, error) {
 	var existing db.Employee
 	err := s.db.Where("wallet_address = ?", req.WalletAddress).First(&existing).Error
 	if err == nil {
@@ -72,7 +72,7 @@ func (s *EmployeeService) Create(req CreateEmployeeRequest) (*db.Employee, error
 
 	now := time.Now().Unix()
 	emp := &db.Employee{
-		EmployerAddress: "",
+		EmployerAddress: employerAddress,
 		Name:            req.Name,
 		Nickname:        req.Nickname,
 		WalletAddress:   req.WalletAddress,
