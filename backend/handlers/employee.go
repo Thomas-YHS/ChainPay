@@ -8,8 +8,12 @@ import (
 
 	"github.com/chainpay/backend/services"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
+
+// walletRegex is shared with the middleware to avoid re-compiling on every request (M-3).
+var walletRegex = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 
 type EmployeeHandler struct {
 	svc *services.EmployeeService
@@ -27,16 +31,26 @@ func (h *EmployeeHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body", "data": nil})
 		return
 	}
-	// Validate address format
-	if !regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`).MatchString(req.WalletAddress) {
+	if !walletRegex.MatchString(req.WalletAddress) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid wallet address format", "data": nil})
 		return
 	}
-	// Validate frequency
 	if !map[string]bool{"daily": true, "weekly": true, "monthly": true}[req.PayFrequency] {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid pay_frequency", "data": nil})
 		return
 	}
+
+	// H-4 fixed: validate salary is positive
+	salary, err := decimal.NewFromString(req.SalaryAmount)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid salary_amount", "data": nil})
+		return
+	}
+	if salary.LessThanOrEqual(decimal.Zero) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "salary_amount must be positive", "data": nil})
+		return
+	}
+
 	emp, err := h.svc.Create(req, employer)
 	if err != nil {
 		msg := err.Error()
@@ -65,7 +79,8 @@ func (h *EmployeeHandler) List(c *gin.Context) {
 func (h *EmployeeHandler) Get(c *gin.Context) {
 	wallet := c.Param("wallet_address")
 	emp, err := h.svc.GetByWallet(wallet)
-	if err != nil || errors.Is(err, gorm.ErrRecordNotFound) {
+	// H-5 fixed: correct error handling — ErrRecordNotFound -> 404, other errors -> 500
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "employee not found", "data": nil})
 		return
 	}
@@ -96,7 +111,8 @@ func (h *EmployeeHandler) Delete(c *gin.Context) {
 func (h *EmployeeHandler) Verify(c *gin.Context) {
 	wallet := c.Param("wallet_address")
 	emp, err := h.svc.GetByWallet(wallet)
-	if err != nil || errors.Is(err, gorm.ErrRecordNotFound) {
+	// H-5 fixed: same pattern as Get()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusOK, gin.H{"code": 200, "message": "success", "data": gin.H{"exists": false}})
 		return
 	}
@@ -116,11 +132,30 @@ func (h *EmployeeHandler) Verify(c *gin.Context) {
 // PATCH /api/v1/employees/:wallet_address/rules-status
 func (h *EmployeeHandler) UpdateRulesStatus(c *gin.Context) {
 	wallet := c.Param("wallet_address")
+	caller := c.GetString("wallet") // H-1/H-4: the caller claiming this wallet
+
 	var body struct{ HasRules bool `json:"has_rules"` }
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request", "data": nil})
 		return
 	}
+
+	// C-4 fixed: authorization — only the employee themselves can update their rules status
+	emp, err := h.svc.GetByWallet(wallet)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "employee not found", "data": nil})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	// Only the employee wallet itself may call this endpoint
+	if !strings.EqualFold(emp.WalletAddress, caller) {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "forbidden: you are not this employee", "data": nil})
+		return
+	}
+
 	if err := h.svc.UpdateRulesStatus(wallet, body.HasRules); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
 		return

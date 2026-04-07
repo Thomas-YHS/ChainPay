@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"strings"
@@ -24,35 +25,38 @@ import (
 	"gorm.io/gorm"
 )
 
+// lifiHTTPClient has an explicit timeout to prevent goroutine leaks on slow API responses.
+var lifiHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 type PayrollService struct {
 	db        *gorm.DB
 	cfg       *config.Config
 	ethClient *ethclient.Client
+	nonceMgr  *NonceManager
 }
 
-func NewPayrollService(database *gorm.DB, cfg *config.Config) *PayrollService {
-	client, _ := ethclient.Dial("https://mainnet.base.org")
-	return &PayrollService{db: database, cfg: cfg, ethClient: client}
+// NewPayrollService accepts a shared ethclient and NonceManager injected from main.
+func NewPayrollService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager) *PayrollService {
+	return &PayrollService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm}
 }
 
 func (s *PayrollService) DB() *gorm.DB { return s.db }
 
 type Rule struct {
 	ChainID      *big.Int       `json:"chainId"`
-	TokenAddress common.Address  `json:"tokenAddress"`
+	TokenAddress common.Address `json:"tokenAddress"`
 	Percentage   *big.Int       `json:"percentage"`
 }
 
-type ExecutePayoutRequest struct {
-	EmployeeWallet string `json:"employee_wallet" binding:"required"`
-}
-
 func (s *PayrollService) GetRulesFromChain(employeeAddress string) ([]Rule, error) {
-	if s.cfg.ChainPayContract == "" {
+	if s.cfg.Blockchain.ChainPayContract == "" {
 		return nil, errors.New("contract address not configured")
 	}
+	if s.ethClient == nil {
+		return nil, errors.New("eth client not available")
+	}
 
-	contractAddr := common.HexToAddress(s.cfg.ChainPayContract)
+	contractAddr := common.HexToAddress(s.cfg.Blockchain.ChainPayContract)
 	employeeAddr := common.HexToAddress(employeeAddress)
 
 	input, err := chainPayABI.Pack("getRules", employeeAddr)
@@ -61,8 +65,7 @@ func (s *PayrollService) GetRulesFromChain(employeeAddress string) ([]Rule, erro
 	}
 
 	msg := ethereum.CallMsg{From: employeeAddr, To: &contractAddr, Data: input}
-	ctx := context.Background()
-	result, err := s.ethClient.CallContract(ctx, msg, nil)
+	result, err := s.ethClient.CallContract(context.Background(), msg, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -95,8 +98,10 @@ func (s *PayrollService) GetRulesFromChain(employeeAddress string) ([]Rule, erro
 	return rules, nil
 }
 
-func (s *PayrollService) BuildLiFiCalldata(amount string, rules []Rule) ([][]byte, error) {
-	if s.cfg.LiFiAPIKey == "" {
+// BuildLiFiCalldata generates Li.Fi swap calldata for each rule.
+// toAddress is the employee's wallet — Li.Fi will deliver swapped tokens there.
+func (s *PayrollService) BuildLiFiCalldata(amount string, rules []Rule, toAddress string) ([][]byte, error) {
+	if s.cfg.Blockchain.LiFiAPIKey == "" {
 		return nil, errors.New("LIFI_API_KEY not configured")
 	}
 
@@ -114,8 +119,8 @@ func (s *PayrollService) BuildLiFiCalldata(amount string, rules []Rule) ([][]byt
 		payload := lifiSwapRequest{
 			FromTokenAddress: usdcAddress,
 			ToTokenAddress:   rule.TokenAddress.Hex(),
-			FromAddress:      s.cfg.ChainPayContract,
-			ToAddress:        "",
+			FromAddress:      s.cfg.Blockchain.ChainPayContract,
+			ToAddress:        toAddress, // M-7 fixed: was always ""
 			FromAmount:       ruleAmount.String(),
 			Slippage:         0.01,
 			ChainID:          rule.ChainID.Int64(),
@@ -126,26 +131,32 @@ func (s *PayrollService) BuildLiFiCalldata(amount string, rules []Rule) ([][]byt
 			return nil, err
 		}
 
-		req, err := http.NewRequest("POST", "https://api.li.fi/v1/advanced/swap-and-execute", bytes.NewReader(data))
+		// C-2 fixed: response body closed inside anonymous function, not deferred to loop end
+		body, err := func() ([]byte, error) {
+			req, err := http.NewRequest("POST", "https://api.li.fi/v1/advanced/swap-and-execute", bytes.NewReader(data))
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+s.cfg.Blockchain.LiFiAPIKey)
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := lifiHTTPClient.Do(req) // H-6 fixed: uses client with 15s timeout
+			if err != nil {
+				return nil, err
+			}
+			defer resp.Body.Close()
+
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			if resp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("Li.Fi API error %d: %s", resp.StatusCode, string(b))
+			}
+			return b, nil
+		}()
 		if err != nil {
 			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+s.cfg.LiFiAPIKey)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("Li.Fi API error: %s", string(body))
 		}
 
 		var lifiResp lifiSwapResponse
@@ -156,7 +167,6 @@ func (s *PayrollService) BuildLiFiCalldata(amount string, rules []Rule) ([][]byt
 		if len(lifiResp.Steps) == 0 {
 			continue
 		}
-
 		calldatas = append(calldatas, lifiResp.Steps[0].Action.Calldata)
 	}
 
@@ -181,12 +191,17 @@ type lifiSwapResponse struct {
 	} `json:"steps"`
 }
 
-func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, salaryAmount decimal.Decimal) (*db.PayrollLog, error) {
-	if s.cfg.ExecutorPrivateKey == "" {
+// ExecutePayout builds Li.Fi calldata, signs and broadcasts the executePayout tx,
+// records the tx_hash immediately, then confirms the receipt asynchronously.
+func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, salaryAmount decimal.Decimal, triggerType string) (*db.PayrollLog, error) {
+	if s.cfg.Blockchain.ExecutorPrivateKey == "" {
 		return nil, errors.New("executor private key not configured")
 	}
-	if s.cfg.ChainPayContract == "" {
+	if s.cfg.Blockchain.ChainPayContract == "" {
 		return nil, errors.New("contract address not configured")
+	}
+	if s.ethClient == nil {
+		return nil, errors.New("eth client not available")
 	}
 
 	rules, err := s.GetRulesFromChain(employeeAddress)
@@ -198,12 +213,12 @@ func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, 
 	}
 
 	salaryStr := salaryAmount.Shift(6).String()
-	calldatas, err := s.BuildLiFiCalldata(salaryStr, rules)
+	calldatas, err := s.BuildLiFiCalldata(salaryStr, rules, employeeAddress) // M-7 fixed
 	if err != nil {
 		return nil, err
 	}
 
-	privateKey, err := crypto.HexToECDSA(strings.TrimPrefix(s.cfg.ExecutorPrivateKey, "0x"))
+	privateKey, err := crypto.HexToECDSA(strings.TrimPrefix(s.cfg.Blockchain.ExecutorPrivateKey, "0x"))
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +228,7 @@ func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, 
 		return nil, err
 	}
 
-	contractAddr := common.HexToAddress(s.cfg.ChainPayContract)
+	contractAddr := common.HexToAddress(s.cfg.Blockchain.ChainPayContract)
 	employerAddr := common.HexToAddress(employerAddress)
 	employeeAddr := common.HexToAddress(employeeAddress)
 	totalAmount := salaryAmount.Shift(6).BigInt()
@@ -224,16 +239,29 @@ func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, 
 	}
 
 	ctx := context.Background()
+
+	// Estimate gas
 	msg := ethereum.CallMsg{From: auth.From, To: &contractAddr, Data: input}
 	gasLimit, err := s.ethClient.EstimateGas(ctx, msg)
 	if err != nil {
 		gasLimit = 500000
 	}
-	auth.GasLimit = gasLimit
 
-	tx := types.NewTransaction(auth.Nonce.Uint64(), contractAddr, nil, auth.GasLimit, auth.GasPrice, input)
+	// C-1 fixed: fetch nonce via shared manager and current gas price
+	nonce, err := s.nonceMgr.Next(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get nonce: %w", err)
+	}
+	gasPrice, err := s.ethClient.SuggestGasPrice(ctx)
+	if err != nil {
+		s.nonceMgr.Reset()
+		return nil, fmt.Errorf("get gas price: %w", err)
+	}
+
+	tx := types.NewTransaction(nonce, contractAddr, nil, gasLimit, gasPrice, input)
 	signedTx, err := auth.Signer(auth.From, tx)
 	if err != nil {
+		s.nonceMgr.Reset()
 		return nil, err
 	}
 
@@ -243,34 +271,72 @@ func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, 
 		EmployeeAddress: employeeAddress,
 		Amount:          salaryAmount,
 		Status:          "pending",
-		TriggerType:     "manual",
+		TriggerType:     triggerType,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
 	if err := s.db.Create(logEntry).Error; err != nil {
+		s.nonceMgr.Reset()
 		return nil, err
 	}
 
-	err = s.ethClient.SendTransaction(ctx, signedTx)
-	if err != nil {
-		s.db.Model(logEntry).Updates(map[string]interface{}{"status": "failed", "error_message": err.Error(), "updated_at": time.Now().Unix()})
+	if err := s.ethClient.SendTransaction(ctx, signedTx); err != nil {
+		s.nonceMgr.Reset()
+		s.db.Model(logEntry).Updates(map[string]interface{}{
+			"status":        "failed",
+			"error_message": err.Error(),
+			"updated_at":    time.Now().Unix(),
+		})
 		return nil, err
 	}
 
-	receipt, err := s.ethClient.TransactionReceipt(ctx, signedTx.Hash())
-	if err != nil {
-		return logEntry, nil
-	}
+	// C-3 fixed: record tx_hash immediately, then confirm asynchronously
+	txHash := signedTx.Hash().Hex()
+	s.db.Model(logEntry).Updates(map[string]interface{}{
+		"tx_hash":    txHash,
+		"updated_at": time.Now().Unix(),
+	})
+	logEntry.TxHash = txHash
 
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		s.db.Model(logEntry).Updates(map[string]interface{}{"tx_hash": receipt.TxHash.Hex(), "status": "success", "updated_at": time.Now().Unix()})
-		logEntry.TxHash = receipt.TxHash.Hex()
-		logEntry.Status = "success"
-	} else {
-		s.db.Model(logEntry).Updates(map[string]interface{}{"tx_hash": receipt.TxHash.Hex(), "status": "failed", "updated_at": time.Now().Unix()})
-		logEntry.TxHash = receipt.TxHash.Hex()
-		logEntry.Status = "failed"
-	}
+	go s.awaitReceipt(signedTx.Hash(), logEntry.ID)
 
 	return logEntry, nil
+}
+
+// awaitReceipt polls for the transaction receipt and updates the payroll log status.
+// Runs in a separate goroutine; times out after 5 minutes.
+func (s *PayrollService) awaitReceipt(txHash common.Hash, logID uint64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.db.Model(&db.PayrollLog{}).Where("id = ?", logID).Updates(map[string]interface{}{
+				"status":        "failed",
+				"error_message": "receipt timeout after 5 minutes",
+				"updated_at":    time.Now().Unix(),
+			})
+			log.Printf("awaitReceipt: timeout for tx %s (log %d)", txHash.Hex(), logID)
+			return
+		case <-ticker.C:
+			r, err := s.ethClient.TransactionReceipt(ctx, txHash)
+			if err != nil {
+				continue // not mined yet
+			}
+			status := "failed"
+			if r.Status == types.ReceiptStatusSuccessful {
+				status = "success"
+			}
+			s.db.Model(&db.PayrollLog{}).Where("id = ?", logID).Updates(map[string]interface{}{
+				"status":     status,
+				"updated_at": time.Now().Unix(),
+			})
+			log.Printf("awaitReceipt: tx %s status=%s (log %d)", txHash.Hex(), status, logID)
+			return
+		}
+	}
 }

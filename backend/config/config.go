@@ -1,40 +1,75 @@
 package config
 
 import (
+	"fmt"
 	"os"
+
+	"github.com/goccy/go-yaml"
 )
 
 type Config struct {
-	Port             string
-	DBHost           string
-	DBPort           string
-	DBUser           string
-	DBPassword       string
-	DBName           string
-	DBSSLMode        string
-	ExecutorPrivateKey string
-	ChainPayContract string
-	LiFiAPIKey       string
+	Server     ServerConfig     `yaml:"server"`
+	Database   DatabaseConfig  `yaml:"database"`
+	Blockchain BlockchainConfig `yaml:"blockchain"`
 }
 
-func Load() *Config {
-	return &Config{
-		Port:             getEnv("PORT", "8080"),
-		DBHost:           getEnv("DB_HOST", "localhost"),
-		DBPort:           getEnv("DB_PORT", "5432"),
-		DBUser:           getEnv("DB_USER", "chainpay"),
-		DBPassword:       getEnv("DB_PASSWORD", "password"),
-		DBName:           getEnv("DB_NAME", "chainpay_db"),
-		DBSSLMode:        getEnv("DB_SSLMODE", "disable"),
-		ExecutorPrivateKey: os.Getenv("EXECUTOR_PRIVATE_KEY"),
-		ChainPayContract: os.Getenv("CHAIN_PAY_CONTRACT"),
-		LiFiAPIKey:       os.Getenv("LIFI_API_KEY"),
-	}
+type ServerConfig struct {
+	Port string `yaml:"port"`
 }
 
-func getEnv(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+type DatabaseConfig struct {
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	Name     string `yaml:"name"`
+	SSLMode  string `yaml:"sslmode"`
+}
+
+type BlockchainConfig struct {
+	ChainPayContract   string `yaml:"chain_pay_contract"`
+	ExecutorPrivateKey string `yaml:"executor_private_key"`
+	LiFiAPIKey         string `yaml:"lifi_api_key"`
+	EthRPCURL          string `yaml:"eth_rpc_url"`
+}
+
+// Load reads config from config.yaml.
+// CONFIG_PATH env var overrides the default path (backend/config.yaml).
+func Load() (*Config, error) {
+	path := os.Getenv("CONFIG_PATH")
+	if path == "" {
+		// Default: look for config.yaml relative to working directory
+		path = "config.yaml"
 	}
-	return defaultVal
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config.yaml at %s: %w", path, err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config.yaml: %w", err)
+	}
+
+	// Validation
+	if cfg.Database.Password == "" {
+		return nil, fmt.Errorf("database.password is required in config.yaml")
+	}
+
+	// Apply defaults
+	if cfg.Server.Port == "" {
+		cfg.Server.Port = "8080"
+	}
+	if cfg.Database.Port == "" {
+		cfg.Database.Port = "5432"
+	}
+	if cfg.Database.SSLMode == "" {
+		cfg.Database.SSLMode = "disable"
+	}
+	if cfg.Blockchain.EthRPCURL == "" {
+		cfg.Blockchain.EthRPCURL = "https://mainnet.base.org"
+	}
+
+	return &cfg, nil
 }

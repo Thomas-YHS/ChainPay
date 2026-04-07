@@ -131,4 +131,9 @@ contract ChainPayTest is Ownable, ReentrancyGuard, Pausable {
 
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
+
+    function rescueTokens(address token, address to, uint256 amount) external onlyOwner whenPaused {
+        require(to != address(0), "ChainPay: rescue to zero address");
+        IERC20(token).safeTransfer(to, amount);
+    }
 }

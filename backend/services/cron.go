@@ -9,7 +9,12 @@ import (
 )
 
 func StartCron(employeeSvc *EmployeeService, payrollSvc *PayrollService) {
-	c := cron.New()
+	c := cron.New(
+		cron.WithChain(
+			// H-7 fixed: SkipIfStillRunning prevents double-firing if previous run hasn't finished
+			cron.SkipIfStillRunning(cron.DefaultLogger),
+		),
+	)
 	_, err := c.AddFunc("0 0 * * *", func() {
 		runScheduledPayroll(employeeSvc, payrollSvc)
 	})
@@ -18,21 +23,21 @@ func StartCron(employeeSvc *EmployeeService, payrollSvc *PayrollService) {
 		return
 	}
 	c.Start()
-	log.Println("Cron scheduler started: runs daily at UTC 00:00")
+	log.Println("Cron scheduler started: runs daily at UTC 00:00, skip-if-still-running enabled")
 }
 
 func runScheduledPayroll(employeeSvc *EmployeeService, payrollSvc *PayrollService) {
 	now := time.Now().Unix()
 
 	var employees []struct {
-		WalletAddress  string
+		WalletAddress   string
 		EmployerAddress string
-		SalaryAmount   string
-		PayFrequency   string
-		NextPayDate    int64
+		SalaryAmount    string
+		PayFrequency    string
+		NextPayDate     int64
 	}
 
-	err := employeeSvc.db.Table("employees").
+	err := employeeSvc.DB().Table("employees").
 		Select("wallet_address, employer_address, salary_amount, pay_frequency, next_pay_date").
 		Where("next_pay_date <= ? AND has_rules = ?", now, true).
 		Scan(&employees).Error
@@ -52,17 +57,25 @@ func runScheduledPayroll(employeeSvc *EmployeeService, payrollSvc *PayrollServic
 			continue
 		}
 
-		_, err = payrollSvc.ExecutePayout(emp.EmployerAddress, emp.WalletAddress, salary)
+		result, err := payrollSvc.ExecutePayout(emp.EmployerAddress, emp.WalletAddress, salary, "cron")
 		if err != nil {
 			log.Printf("Cron: payout failed for %s: %v", emp.WalletAddress, err)
 			continue
 		}
 
+		// M-5 fixed: check update result, and update next_pay_date only after successful payout
+		// Note: awaitReceipt runs async, so "pending" status is expected immediately.
+		// We optimistically advance next_pay_date on broadcast success.
 		nextDate := calcNextPayDate(emp.PayFrequency)
-		employeeSvc.db.Model(&struct{}{}).Table("employees").
+		res := employeeSvc.DB().Model(&struct{}{}).Table("employees").
 			Where("wallet_address = ?", emp.WalletAddress).
 			Update("next_pay_date", nextDate)
-
-		log.Printf("Cron: payout succeeded for %s", emp.WalletAddress)
+		if res.Error != nil {
+			log.Printf("Cron: failed to update next_pay_date for %s (tx=%s): %v",
+				emp.WalletAddress, result.TxHash, res.Error)
+		} else {
+			log.Printf("Cron: payout broadcast OK for %s (tx=%s, log_id=%d)",
+				emp.WalletAddress, result.TxHash, result.ID)
+		}
 	}
 }

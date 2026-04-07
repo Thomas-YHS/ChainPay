@@ -345,6 +345,57 @@ describe("ChainPay", function () {
     });
   });
 
+  // ===================== rescueTokens =====================
+  describe("rescueTokens", function () {
+    it("Owner 可在暂停状态下提取滞留 Token", async function () {
+      // 模拟有 USDC 滞留在合约（直接 mint 到合约地址）
+      const stuckAmount = ethers.parseUnits("10", 6);
+      await mockUSDC.mint(await chainPay.getAddress(), stuckAmount);
+
+      await chainPay.connect(owner).pause();
+
+      const beforeBalance = await mockUSDC.balanceOf(owner.address);
+      await chainPay
+        .connect(owner)
+        .rescueTokens(await mockUSDC.getAddress(), owner.address, stuckAmount);
+      const afterBalance = await mockUSDC.balanceOf(owner.address);
+
+      expect(afterBalance - beforeBalance).to.equal(stuckAmount);
+    });
+
+    it("未暂停时不能 rescue", async function () {
+      const stuckAmount = ethers.parseUnits("10", 6);
+      await mockUSDC.mint(await chainPay.getAddress(), stuckAmount);
+
+      await expect(
+        chainPay
+          .connect(owner)
+          .rescueTokens(await mockUSDC.getAddress(), owner.address, stuckAmount)
+      ).to.be.revertedWithCustomError(chainPay, "ExpectedPause");
+    });
+
+    it("非 Owner 不能 rescue", async function () {
+      await chainPay.connect(owner).pause();
+      const stuckAmount = ethers.parseUnits("10", 6);
+      await mockUSDC.mint(await chainPay.getAddress(), stuckAmount);
+
+      await expect(
+        chainPay
+          .connect(stranger)
+          .rescueTokens(await mockUSDC.getAddress(), stranger.address, stuckAmount)
+      ).to.be.revertedWithCustomError(chainPay, "OwnableUnauthorizedAccount");
+    });
+
+    it("rescue 到零地址时 revert", async function () {
+      await chainPay.connect(owner).pause();
+      await expect(
+        chainPay
+          .connect(owner)
+          .rescueTokens(await mockUSDC.getAddress(), ethers.ZeroAddress, 1)
+      ).to.be.revertedWith("ChainPay: rescue to zero address");
+    });
+  });
+
   // ===================== setExecutor =====================
   describe("setExecutor", function () {
     it("Owner 可以更新执行者地址", async function () {

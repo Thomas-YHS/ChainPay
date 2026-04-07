@@ -7,7 +7,10 @@ import (
 )
 
 func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.PayrollHandler) *gin.Engine {
-	r := gin.Default()
+	// L-1 fixed: use gin.New() instead of gin.Default() so we control middleware explicitly
+	r := gin.New()
+	r.Use(gin.Logger())            // request log
+	r.Use(middleware.CORS(nil))    // L-6 fixed: CORS (allowlist empty = deny all origins; set before deploy)
 
 	api := r.Group("/api/v1")
 	{

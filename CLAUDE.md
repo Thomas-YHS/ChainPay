@@ -15,7 +15,7 @@
 - **语言背景**：Java 开发者，Go 初学者，无 Solidity 经验
 - **开发方式**：Vibe Coding，AI 辅助开发
 - **节奏**：单人，约 1 周完成黑客松 MVP
-- **当前状态**：文档阶段完成，准备开始写代码
+- **当前状态**：前端 ✅、合约 ✅（26测试全绿，审计通过，rescueTokens已加）、后端 ✅（Gin+GORM+Cron，17项审计问题已修复），待部署
 
 ### AI 辅助原则
 - 代码示例优先用**完整可运行**的片段，不要省略 import
@@ -30,10 +30,10 @@
 
 | 层级 | 技术 | 备注 |
 |---|---|---|
-| 前端 | React (Vite) + Tailwind + wagmi + RainbowKit | 钱包连接、路由预览 |
-| 链上路由 | Li.Fi SDK `@lifi/sdk` | 核心执行引擎，前端调用 |
-| 智能合约 | Solidity + **Hardhat** + OpenZeppelin | 部署在 Base Mainnet |
-| 后端 | Go + Gin + GORM + robfig/cron | 档案管理、定时发薪 |
+| 前端 | React 19 (Vite 8) + Tailwind v4 + wagmi v2 + RainbowKit | 钱包连接、路由预览 |
+| 链上路由 | Li.Fi SDK `@lifi/sdk` v3 | 核心执行引擎，前端调用 |
+| 智能合约 | Solidity 0.8.20 + **Hardhat** + OpenZeppelin v5 | 部署在 Base Mainnet |
+| 后端 | Go + Gin + GORM + robfig/cron + go-ethereum | 档案管理、定时发薪 |
 | 数据库 | PostgreSQL | 链下数据 |
 | 部署 | Railway | Go 后端 + DB |
 
@@ -42,41 +42,53 @@
 ## 项目结构
 
 ```
-SalaryLiFiProject/
+ChainPay/
 ├── CLAUDE.md              ← 本文件，每次必读
 ├── frontend/              ← React (Vite)
+│   └── src/
+│       ├── features/      ← employer/ + employee/ + shared/
+│       ├── pages/         ← LandingPage.tsx
+│       ├── store.ts       ← Zustand 全局状态
+│       └── theme.ts       ← 颜色/主题集中定义
 ├── backend/               ← Go + Gin
+│   ├── main.go
+│   ├── config/            ← 环境变量加载
+│   ├── db/                ← GORM 连接 + 迁移
+│   ├── handlers/          ← employee.go, payroll.go
+│   ├── services/          ← employee.go, payroll.go, cron.go
+│   ├── models/            ← GORM 模型
+│   ├── middleware/        ← 认证中间件
+│   └── router/            ← 路由注册
 ├── contracts/             ← Solidity + Hardhat
+│   ├── contracts/ChainPay.sol
+│   ├── scripts/deploy.js
+│   ├── test/
+│   └── hardhat.config.js
 └── docs/
     ├── product/
-    │   ├── ChainPay_产品概述.md
-    │   └── ChainPay_MVP.md
     ├── technical/
-    │   ├── ChainPay_Contract.md
-    │   ├── ChainPay_API.md
-    │   ├── ChainPay_DB.md
-    │   └── ChainPay_Architecture.md
-    └── decisions/
-        └── ADR-001-Hardhat-vs-Foundry.md
+    ├── decisions/
+    └── superpowers/
+        ├── specs/         ← UI 设计规范
+        └── plans/         ← 实现计划
 ```
 
 ---
 
 ## 核心业务流程
 
-### 完整链路
 ```
 雇主 → 添加员工档案（Go API → PostgreSQL）
      → Approve USDC 给 ChainPay 合约
 
 员工 → 连接钱包 → 验证身份（Go API）
-     → 设置接收规则 → 写入链上合约
+     → 设置接收规则 → 写入链上合约（setRules，只能一次）
 
 发薪触发（手动 或 Go Cron 定时）
      → 前端生成 Li.Fi calldata
      → 执行者钱包调用 ChainPay 合约
      → 合约从雇主钱包拉取 USDC
-     → 合约调用 Li.Fi 合约
+     → 合约调用 Li.Fi Diamond 合约
      → Li.Fi 路由到员工多链钱包
 ```
 
@@ -96,16 +108,18 @@ SalaryLiFiProject/
 | 部署链 | Base Mainnet（Chain ID: 8453）|
 | USDC（Base）| `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
 | Li.Fi Diamond（Base）| `0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE` |
-| ChainPay 合约地址 | 待部署后填入 |
+| ChainPay 合约地址 | **待部署后填入** |
 | 比例精度 | 10000 为基数（40% = 4000）|
+| 每员工最多规则数 | 5 条 |
 
 ### 合约核心函数
 ```solidity
 registerEmployee(address employee)          // 雇主注册员工
-setRules(Rule[] rules)                      // 员工设置规则（仅一次）
+setRules(Rule[] rules)                      // 员工设置规则（仅一次，总比例必须 = 10000）
 executePayout(employer, employee,           // 执行者触发发薪
     totalAmount, bytes[] lifiCallData)
 getRules(address employee)                  // 查询规则
+updateExecutor(address newExecutor)         // Owner 更换执行者
 ```
 
 ---
@@ -114,12 +128,75 @@ getRules(address employee)                  // 查询规则
 
 ```
 ❌ 绝对不能 hardcode 私钥
-❌ 绝对不能把 .env 提交到 Git
-✅ 私钥只存 Railway 环境变量
-✅ 代码中用 os.Getenv("EXECUTOR_PRIVATE_KEY")
+❌ 绝对不能把 config.yaml 提交到 Git
+✅ 敏感信息（私钥、数据库密码）只存 config.yaml，config.yaml 已加入 .gitignore
 ✅ 执行者钱包不持有 USDC，只持有少量 ETH（Gas 费）
 ✅ 雇主每次发薪 Approve 精确金额，不用无限授权
 ```
+
+---
+
+## 快速启动
+
+### 前端
+```bash
+cd frontend && npm run dev        # http://localhost:5173
+cd frontend && npx tsc --noEmit   # 类型检查
+cd frontend && npm run build      # 构建检查
+```
+
+### 合约
+```bash
+cd contracts && npx hardhat test                                      # 跑测试
+cd contracts && npx hardhat run scripts/deploy.js --network base      # 部署到 Base
+cd contracts && npx hardhat run scripts/deploy.js --network gnosis    # 部署到 Gnosis（Gas 更低）
+```
+
+### 后端
+```bash
+cd backend && go run main.go      # 启动服务 :8080（需先有 PostgreSQL）
+cd backend && go build ./...      # 编译检查
+cd backend && go test ./...       # 跑测试
+```
+
+---
+
+## 环境变量
+
+### `frontend/.env.local`
+```
+VITE_API_URL=http://localhost:8080/api/v1
+VITE_CHAIN_PAY_CONTRACT=          # 合约部署后填入，留空则合约调用失败
+```
+
+### `contracts/.env`
+```
+DEPLOYER_PRIVATE_KEY=0x...        # 部署者私钥
+EXECUTOR_ADDRESS=0x...            # 执行者钱包地址（Go 后端）
+BASESCAN_API_KEY=...              # 合约验证用（可选）
+```
+
+### 后端配置（`backend/config.yaml`，基于 `config.yaml.example`）
+```yaml
+server:
+  port: "8080"
+database:
+  host: "localhost"
+  port: "5432"
+  user: "chainpay"
+  password: ""       # 必须填写，无默认值
+  name: "chainpay_db"
+  sslmode: "disable"
+blockchain:
+  chain_pay_contract: ""     # 合约部署后填入
+  executor_private_key: ""   # 不填则 Cron 不启动
+  lifi_api_key: ""           # Li.Fi API Key（可选）
+  eth_rpc_url: "https://mainnet.base.org"
+```
+环境变量 `CONFIG_PATH` 可覆盖默认路径（默认 `config.yaml`）。
+
+### Tailwind v4 注意
+无 `tailwind.config.js`，通过 `@tailwindcss/vite` 插件自动处理，颜色/主题在 `src/theme.ts` 集中定义。
 
 ---
 
@@ -134,17 +211,14 @@ getRules(address employee)                  // 查询规则
 
 ---
 
-## 7 天开发计划
+## 当前进度
 
-| 天 | 任务 |
-|---|---|
-| Day 1 | 前端初始化 + wagmi 钱包连接 + Li.Fi SDK 跑通第一条路由 |
-| Day 2 | Hardhat 初始化 + ChainPay 合约开发 + 部署到 Base |
-| Day 3 | 员工配置页：钱包验证 + 规则配置 + 写入合约 |
-| Day 4 | 雇主管理端：员工档案 + USDC Approve + 手动发薪 |
-| Day 5 | Go 后端：Gin API + GORM + Cron 定时任务 |
-| Day 6 | 路由执行状态展示 + 路由可视化 |
-| Day 7 | UI 打磨 + Demo 演练 + 提交 |
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| 前端 | ✅ 完成 | 落地页 + 雇主端 + 员工端 + Li.Fi 路由 + Zustand |
+| 合约 | ✅ 代码完成 | ChainPay.sol 277 行，待部署到 Base |
+| 后端 | ✅ 脚手架完成 | Gin + GORM + Cron，待联调合约 |
+| 联调 | 🔲 未开始 | 员工规则写入合约、发薪执行 |
 
 ---
 

@@ -259,4 +259,19 @@ contract ChainPay is Ownable, ReentrancyGuard, Pausable {
     function unpause() external onlyOwner {
         _unpause();
     }
+
+    /**
+     * @notice 紧急提款：将合约内滞留的 Token 转回 Owner（仅暂停状态可用）
+     * @param token  Token 合约地址
+     * @param to     接收地址
+     * @param amount 提取数量
+     */
+    function rescueTokens(
+        address token,
+        address to,
+        uint256 amount
+    ) external onlyOwner whenPaused {
+        require(to != address(0), "ChainPay: rescue to zero address");
+        IERC20(token).safeTransfer(to, amount);
+    }
 }
