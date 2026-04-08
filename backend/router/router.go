@@ -10,7 +10,10 @@ func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.P
 	// L-1 fixed: use gin.New() instead of gin.Default() so we control middleware explicitly
 	r := gin.New()
 	r.Use(gin.Logger())            // request log
-	r.Use(middleware.CORS(nil))    // L-6 fixed: CORS (allowlist empty = deny all origins; set before deploy)
+	r.Use(middleware.CORS([]string{
+		"http://localhost:5173",
+		"http://localhost:5174",
+	}))
 
 	api := r.Group("/api/v1")
 	{

@@ -31,6 +31,7 @@ type BlockchainConfig struct {
 	ExecutorPrivateKey string `yaml:"executor_private_key"`
 	LiFiAPIKey         string `yaml:"lifi_api_key"`
 	EthRPCURL          string `yaml:"eth_rpc_url"`
+	CronEnabled        bool   `yaml:"cron_enabled"`
 }
 
 // Load reads config from config.yaml.

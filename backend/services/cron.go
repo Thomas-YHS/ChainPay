@@ -8,7 +8,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func StartCron(employeeSvc *EmployeeService, payrollSvc *PayrollService) {
+func StartCron(employeeSvc *EmployeeService, payrollSvc *PayrollService, cronEnabled bool) {
+	if !cronEnabled {
+		log.Println("Cron disabled by config — auto payout will not run")
+		return
+	}
 	c := cron.New(
 		cron.WithChain(
 			// H-7 fixed: SkipIfStillRunning prevents double-firing if previous run hasn't finished
@@ -39,7 +43,7 @@ func runScheduledPayroll(employeeSvc *EmployeeService, payrollSvc *PayrollServic
 
 	err := employeeSvc.DB().Table("employees").
 		Select("wallet_address, employer_address, salary_amount, pay_frequency, next_pay_date").
-		Where("next_pay_date <= ? AND has_rules = ?", now, true).
+		Where("next_pay_date <= ? AND has_rules = ? AND cron_enabled = ?", now, true, true).
 		Scan(&employees).Error
 	if err != nil {
 		log.Printf("Cron: failed to query employees: %v", err)

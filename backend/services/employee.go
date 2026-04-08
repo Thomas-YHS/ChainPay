@@ -53,6 +53,7 @@ type CreateEmployeeRequest struct {
 	WalletAddress string `json:"wallet_address" binding:"required"`
 	SalaryAmount  string `json:"salary_amount" binding:"required"`
 	PayFrequency  string `json:"pay_frequency" binding:"required"`
+	CronEnabled   *bool  `json:"cron_enabled"` // nil = default true
 }
 
 func (s *EmployeeService) Create(req CreateEmployeeRequest, employerAddress string) (*db.Employee, error) {
@@ -73,8 +74,15 @@ func (s *EmployeeService) Create(req CreateEmployeeRequest, employerAddress stri
 		return nil, errors.New("salary_amount must be positive")
 	}
 
-	if err := s.registerOnChain(context.Background(), req.WalletAddress); err != nil {
-		return nil, fmt.Errorf("on-chain registration failed: %w", err)
+	if s.cfg.Blockchain.ExecutorPrivateKey != "" && s.cfg.Blockchain.ChainPayContract != "" {
+		if err := s.registerOnChain(context.Background(), req.WalletAddress); err != nil {
+			return nil, fmt.Errorf("on-chain registration failed: %w", err)
+		}
+	}
+
+	cronEnabled := true
+	if req.CronEnabled != nil {
+		cronEnabled = *req.CronEnabled
 	}
 
 	now := time.Now().Unix()
@@ -86,6 +94,7 @@ func (s *EmployeeService) Create(req CreateEmployeeRequest, employerAddress stri
 		SalaryAmount:    salary,
 		PayFrequency:    req.PayFrequency,
 		HasRules:        false,
+		CronEnabled:     cronEnabled,
 		NextPayDate:     calcNextPayDate(req.PayFrequency),
 		CreatedAt:       now,
 		UpdatedAt:       now,

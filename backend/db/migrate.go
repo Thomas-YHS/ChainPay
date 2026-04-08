@@ -14,6 +14,7 @@ type Employee struct {
 	SalaryAmount     decimal.Decimal `gorm:"type:numeric;not null" json:"salary_amount"`
 	PayFrequency     string  `gorm:"type:varchar(10);not null" json:"pay_frequency"`
 	HasRules         bool    `gorm:"not null;default:false" json:"has_rules"`
+	CronEnabled      bool    `gorm:"not null;default:true" json:"cron_enabled"`
 	NextPayDate      int64   `gorm:"not null" json:"next_pay_date"` // Unix timestamp
 	CreatedAt        int64   `gorm:"not null" json:"created_at"`
 	UpdatedAt        int64   `gorm:"not null" json:"updated_at"`

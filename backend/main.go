@@ -61,8 +61,10 @@ func main() {
 
 	// Start cron only if executor is fully configured
 	if cfg.Blockchain.ExecutorPrivateKey != "" && cfg.Blockchain.ChainPayContract != "" {
-		services.StartCron(employeeSvc, payrollSvc)
-		log.Println("Cron job started")
+		services.StartCron(employeeSvc, payrollSvc, cfg.Blockchain.CronEnabled)
+		if cfg.Blockchain.CronEnabled {
+			log.Println("Cron job started")
+		}
 	} else {
 		log.Println("WARNING: executor not configured, cron disabled")
 	}
