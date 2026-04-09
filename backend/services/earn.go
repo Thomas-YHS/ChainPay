@@ -215,6 +215,9 @@ func (s *EarnService) ExecuteDeposit(vaultID, fromAddress, toAddress, amount, to
 	}
 
 	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	nonce, err := s.nonceMgr.Next(ctx)
 	if err != nil {
 		return "", fmt.Errorf("get nonce: %w", err)

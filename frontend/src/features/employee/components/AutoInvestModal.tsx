@@ -29,7 +29,7 @@ export default function AutoInvestModal({
   const [saving, setSaving] = useState(false)
   const [enabled, setEnabled] = useState(currentEnabled)
   const [selectedVault, setSelectedVault] = useState<Vault | null>(
-    currentVaultID ? { id: currentVaultID, protocol: '', name: '', chain_id: 8453, token_address: '', apy: '', tvl_usd: '', available_funds: '', tags: [] } : null
+    currentVaultID ? { id: currentVaultID, protocol: '', name: '', chainId: 8453, tokenAddress: '', apy: '', tvlUsd: '', availableFunds: '', tags: [] } : null
   )
   const [investType, setInvestType] = useState(currentInvestType || 'percentage')
   const [investValue, setInvestValue] = useState(currentInvestValue || '1000')
@@ -101,7 +101,7 @@ export default function AutoInvestModal({
                         <span className="text-sm font-bold" style={{ color: '#22c55e' }}>{v.apy}</span>
                       </div>
                       <div className="text-xs mt-1" style={{ color: '#64748b' }}>
-                        {v.protocol} · TVL ${v.tvl_usd}
+                        {v.protocol} · TVL ${v.tvlUsd}
                       </div>
                     </div>
                   ))}

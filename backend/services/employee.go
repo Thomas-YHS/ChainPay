@@ -147,6 +147,8 @@ type AutoInvestConfig struct {
 }
 
 // GetAutoInvest returns the auto-invest config for an employee.
+// invest_value: for "percentage" type, stored as basis points (e.g., "1000" = 10%);
+//               for "fixed" type, stored as plain USDC amount (e.g., "50" = 50 USDC).
 func (s *EmployeeService) GetAutoInvest(walletAddress string) (*AutoInvestConfig, error) {
 	var emp db.Employee
 	if err := s.db.Where("wallet_address = ?", walletAddress).First(&emp).Error; err != nil {
@@ -156,7 +158,7 @@ func (s *EmployeeService) GetAutoInvest(walletAddress string) (*AutoInvestConfig
 		Enabled:     emp.AutoInvestEnabled,
 		VaultID:     emp.AutoInvestVaultID,
 		InvestType:  emp.AutoInvestType,
-		InvestValue: emp.AutoInvestValue.Shift(-6).String(),
+		InvestValue: emp.AutoInvestValue.String(),
 	}, nil
 }
 

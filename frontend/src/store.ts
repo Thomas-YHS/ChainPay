@@ -23,11 +23,11 @@ export interface Vault {
   id: string
   protocol: string
   name: string
-  chain_id: number
-  token_address: string
+  chainId: number
+  tokenAddress: string
   apy: string
-  tvl_usd: string
-  available_funds: string
+  tvlUsd: string
+  availableFunds: string
   tags: string[]
 }
 

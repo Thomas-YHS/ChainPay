@@ -316,6 +316,10 @@ func (s *PayrollService) triggerAutoInvest(employeeAddress string, salaryAmount 
 		log.Printf("triggerAutoInvest: employee not found: %s", employeeAddress)
 		return
 	}
+	if !emp.HasRules {
+		log.Printf("triggerAutoInvest: skipping %s, no on-chain rules", employeeAddress)
+		return
+	}
 	if !emp.AutoInvestEnabled || emp.AutoInvestVaultID == "" {
 		return
 	}

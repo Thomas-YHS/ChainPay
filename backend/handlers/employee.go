@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -228,6 +229,23 @@ func (h *EmployeeHandler) UpdateAutoInvest(c *gin.Context) {
 	if body.InvestType != "" && body.InvestType != "percentage" && body.InvestType != "fixed" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invest_type must be 'percentage' or 'fixed'", "data": nil})
 		return
+	}
+	if body.Enabled && body.InvestType == "percentage" {
+		// basis points: 0-10000 (0%-100%)
+		var bp int64
+		fmt.Sscanf(body.InvestValue, "%d", &bp)
+		if bp < 0 || bp > 10000 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "percentage must be between 0 and 10000 basis points (0-100%)", "data": nil})
+			return
+		}
+	}
+	if body.Enabled && body.InvestType == "fixed" {
+		// fixed USDC amount: must be positive
+		amount, err := decimal.NewFromString(body.InvestValue)
+		if err != nil || amount.LessThanOrEqual(decimal.Zero) {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "fixed amount must be a positive number", "data": nil})
+			return
+		}
 	}
 
 	cfg := services.AutoInvestConfig{
