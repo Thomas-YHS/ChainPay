@@ -11,8 +11,24 @@ export interface Employee {
   salary_amount: string
   pay_frequency: string
   has_rules: boolean
+  auto_invest_enabled: boolean
+  auto_invest_vault_id: string
+  auto_invest_type: string
+  auto_invest_value: string
   next_pay_date: string
   created_at: string
+}
+
+export interface Vault {
+  id: string
+  protocol: string
+  name: string
+  chain_id: number
+  token_address: string
+  apy: string
+  tvl_usd: string
+  available_funds: string
+  tags: string[]
 }
 
 export interface PayrollLog {

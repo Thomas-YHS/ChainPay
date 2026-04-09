@@ -32,6 +32,7 @@ type BlockchainConfig struct {
 	LiFiAPIKey         string `yaml:"lifi_api_key"`
 	EthRPCURL          string `yaml:"eth_rpc_url"`
 	CronEnabled        bool   `yaml:"cron_enabled"`
+	EarnEnabled        bool   `yaml:"earn_enabled"`
 }
 
 // Load reads config from config.yaml.

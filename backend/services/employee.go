@@ -138,6 +138,39 @@ func (s *EmployeeService) UpdateRulesStatus(walletAddress string, hasRules bool)
 	return s.db.Model(&db.Employee{}).Where("wallet_address = ?", walletAddress).Update("has_rules", hasRules).Error
 }
 
+// AutoInvestConfig holds the employee's auto-invest configuration.
+type AutoInvestConfig struct {
+	Enabled      bool   `json:"enabled"`
+	VaultID      string `json:"vault_id"`
+	InvestType   string `json:"invest_type"`   // "percentage" or "fixed"
+	InvestValue  string `json:"invest_value"`  // basis points (e.g., "1000"=10%) or USDC amount
+}
+
+// GetAutoInvest returns the auto-invest config for an employee.
+func (s *EmployeeService) GetAutoInvest(walletAddress string) (*AutoInvestConfig, error) {
+	var emp db.Employee
+	if err := s.db.Where("wallet_address = ?", walletAddress).First(&emp).Error; err != nil {
+		return nil, err
+	}
+	return &AutoInvestConfig{
+		Enabled:     emp.AutoInvestEnabled,
+		VaultID:     emp.AutoInvestVaultID,
+		InvestType:  emp.AutoInvestType,
+		InvestValue: emp.AutoInvestValue.Shift(-6).String(),
+	}, nil
+}
+
+// UpdateAutoInvest updates the auto-invest config for an employee.
+func (s *EmployeeService) UpdateAutoInvest(walletAddress string, cfg AutoInvestConfig) error {
+	updates := map[string]interface{}{
+		"auto_invest_enabled": cfg.Enabled,
+		"auto_invest_vault_id": cfg.VaultID,
+		"auto_invest_type":    cfg.InvestType,
+		"auto_invest_value":   cfg.InvestValue,
+	}
+	return s.db.Model(&db.Employee{}).Where("wallet_address = ?", walletAddress).Updates(updates).Error
+}
+
 func calcNextPayDate(frequency string) int64 {
 	now := time.Now()
 	switch frequency {

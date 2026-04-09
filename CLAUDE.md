@@ -24,6 +24,10 @@
 - 遇到新概念先给**类比**（如"这相当于 Java 的 X"），再给代码
 - 每次改动说明**为什么**，不只是说"改成这样"
 
+### Git 提交规范
+- **提交消息使用中文**，便于项目历史追溯和团队阅读
+- 格式：`type(scope): 描述`，type 使用英文（如 feat、fix、docs、refactor）
+
 ---
 
 ## 技术栈
@@ -65,13 +69,24 @@ ChainPay/
 │   ├── test/
 │   └── hardhat.config.js
 └── docs/
-    ├── product/
-    ├── technical/
-    ├── decisions/
-    └── superpowers/
-        ├── specs/         ← UI 设计规范
-        └── plans/         ← 实现计划
+    ├── audit/                         ← 版本化审计报告
+    │   ├── ChainPay_Audit_Summary.md  ← 汇总入口（必读）
+    │   └── v0.1-baseline.md
+    ├── decisions/                      ← ADR 决策记录
+    ├── product/                       ← 产品文档（版本化）
+    │   ├── ChainPay_Product_Summary.md ← 汇总入口（必读）
+    │   └── v1.0-*.md
+    ├── standups/                      ← 每日站会记录
+    ├── superpowers/                   ← 规划与设计
+    │   ├── specs/                    ← UI 设计规范
+    │   └── plans/                    ← 实现计划
+    └── technical/                     ← 技术文档（版本化）
+        ├── ChainPay_*_Summary.md       ← 各模块汇总入口（必读）
+        ├── v1.0-*.md                  ← 各版本完整内容
+        └── ChainPay_*.md              ← 重定向 stub（勿直接编辑）
 ```
+
+**文档版本化规范**：所有技术/产品文档均按版本迭代，旧内容归档到 `vX.Y-*.md`，通过 Summary 汇总文件统一入口。更新文档时新建版本文件，不要直接覆盖。
 
 ---
 
@@ -226,10 +241,15 @@ blockchain:
 
 | 需要了解什么 | 看哪里 |
 |---|---|
-| 产品定位和差异化 | `docs/product/ChainPay_产品概述.md` |
-| 黑客松功能范围 | `docs/product/ChainPay_MVP.md` |
-| 合约函数和安全设计 | `docs/technical/ChainPay_Contract.md` |
-| 后端 API 接口 | `docs/technical/ChainPay_API.md` |
-| 数据库表结构 | `docs/technical/ChainPay_DB.md` |
-| 系统架构图 | `docs/technical/ChainPay_Architecture.md` |
+| **所有文档起点** | `docs/` — 每个子目录均有 `Summary` 汇总入口 |
+| 产品定位和差异化 | `docs/product/ChainPay_Product_Summary.md` |
+| 黑客松功能范围 | `docs/product/ChainPay_Product_Summary.md` |
+| 合约函数和安全设计 | `docs/technical/ChainPay_Contract_Summary.md` |
+| 后端 API 接口 | `docs/technical/ChainPay_API_Summary.md` |
+| 数据库表结构 | `docs/technical/ChainPay_DB_Summary.md` |
+| 系统架构图 | `docs/technical/ChainPay_Architecture_Summary.md` |
+| 代码审计（最新）| `docs/technical/audit/ChainPay_Audit_Summary.md` |
 | 为什么选 Hardhat | `docs/decisions/ADR-001-Hardhat-vs-Foundry.md` |
+| 每日站会记录 | `docs/standups/` |
+
+**文档更新规范**：新建 `vX.Y-*.md` 版本文件，不要直接覆盖旧文档。

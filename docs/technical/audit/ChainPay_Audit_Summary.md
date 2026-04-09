@@ -11,7 +11,7 @@
 |---|---|---|---|
 | 智能合约 ChainPay.sol | 🟢 Low | 26/26 测试全绿 | 可部署 |
 | Go 后端 Handler 层 | 🟢 Low | 鉴权/校验已全部修复 | 可部署 |
-| Go 后端 Service 层 | 🟡 Medium-Low | 1 项待修复 | 部分就绪 |
+| Go 后端 Service 层 | 🟡 Medium-Low | 1 项待修复 + LiFi Earn 集成 | 部分就绪 |
 | Go 后端 Config/DB 层 | 🟢 Low | YAML 配置 + decimal + cron_enabled 开关 | 可部署 |
 | Go 后端 Cron | 🟢 Low | 全局 + 员工级双重开关 | 可部署 |
 
@@ -66,6 +66,7 @@ if len(lifiResp.Steps) == 0 {
 | **v0.1** | 2026-04-07 | 初始审计：24 个问题，发现即修复 17 个 |
 | **v0.2** | 2026-04-08 | Config 层 YAML 重构；审计文档版本化；剩余 7 项为架构限制 |
 | **v0.3** | 2026-04-08 | 全局 cron_enabled + 员工级 CronEnabled 双重开关 |
+| **v0.4** | 2026-04-09 | LiFi Earn 集成：EarnService + 自动定投理财 + Vault API + 前端配置界面 |
 
 ---
 
@@ -87,6 +88,7 @@ if len(lifiResp.Steps) == 0 {
 | `blockchain.executor_private_key` 已填写 | ❌ |
 | `blockchain.chain_pay_contract` 已填写（合约部署后）| ❌ |
 | `blockchain.lifi_api_key` 已填写 | ❌ |
+| `blockchain.earn_enabled: true`（如需开启自动定投理财）| ❌ |
 | 合约已部署到 Base Mainnet | ❌ |
 | 前端 `VITE_CHAIN_PAY_CONTRACT` 已填 | ❌ |
 | **v0.3 问题 3.7 已修复**（Li.Fi calldata 空跳过）| ❌ |

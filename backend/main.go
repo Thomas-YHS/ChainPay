@@ -53,11 +53,13 @@ func main() {
 
 	// Init services (inject shared ethclient and nonce manager)
 	employeeSvc := services.NewEmployeeService(gormDB, cfg, ethClient, nonceMgr)
-	payrollSvc := services.NewPayrollService(gormDB, cfg, ethClient, nonceMgr)
+	earnSvc := services.NewEarnService(cfg, ethClient, nonceMgr)
+	payrollSvc := services.NewPayrollService(gormDB, cfg, ethClient, nonceMgr, earnSvc)
 
 	// Init handlers
 	employeeHandler := handlers.NewEmployeeHandler(employeeSvc)
 	payrollHandler := handlers.NewPayrollHandler(payrollSvc, employeeSvc)
+	vaultHandler := handlers.NewVaultHandler(earnSvc)
 
 	// Start cron only if executor is fully configured
 	if cfg.Blockchain.ExecutorPrivateKey != "" && cfg.Blockchain.ChainPayContract != "" {
@@ -70,7 +72,7 @@ func main() {
 	}
 
 	// Start server
-	r := router.Setup(employeeHandler, payrollHandler)
+	r := router.Setup(employeeHandler, payrollHandler, vaultHandler)
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Printf("ChainPay backend starting on %s", addr)
 	if err := r.Run(addr); err != nil {

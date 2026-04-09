@@ -162,3 +162,83 @@ func (h *EmployeeHandler) UpdateRulesStatus(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "rules status updated", "data": nil})
 }
+
+// GET /api/v1/employees/:wallet_address/auto-invest
+func (h *EmployeeHandler) GetAutoInvest(c *gin.Context) {
+	wallet := c.Param("wallet_address")
+	caller := c.GetString("wallet")
+
+	emp, err := h.svc.GetByWallet(wallet)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "employee not found", "data": nil})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	// Only employee themselves can view their auto-invest config
+	if !strings.EqualFold(emp.WalletAddress, caller) {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "forbidden: you are not this employee", "data": nil})
+		return
+	}
+
+	cfg, err := h.svc.GetAutoInvest(wallet)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "success", "data": cfg})
+}
+
+// PATCH /api/v1/employees/:wallet_address/auto-invest
+func (h *EmployeeHandler) UpdateAutoInvest(c *gin.Context) {
+	wallet := c.Param("wallet_address")
+	caller := c.GetString("wallet")
+
+	emp, err := h.svc.GetByWallet(wallet)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "employee not found", "data": nil})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	// Only employee themselves can update their auto-invest config
+	if !strings.EqualFold(emp.WalletAddress, caller) {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "forbidden: you are not this employee", "data": nil})
+		return
+	}
+
+	var body struct {
+		Enabled     bool   `json:"enabled"`
+		VaultID     string `json:"vault_id"`
+		InvestType  string `json:"invest_type"`  // "percentage" or "fixed"
+		InvestValue string `json:"invest_value"` // basis points or USDC amount
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request", "data": nil})
+		return
+	}
+	if body.Enabled && (body.VaultID == "" || body.InvestType == "" || body.InvestValue == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "vault_id, invest_type, and invest_value are required when enabled", "data": nil})
+		return
+	}
+	if body.InvestType != "" && body.InvestType != "percentage" && body.InvestType != "fixed" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invest_type must be 'percentage' or 'fixed'", "data": nil})
+		return
+	}
+
+	cfg := services.AutoInvestConfig{
+		Enabled:    body.Enabled,
+		VaultID:    body.VaultID,
+		InvestType: body.InvestType,
+		InvestValue: body.InvestValue,
+	}
+	if err := h.svc.UpdateAutoInvest(wallet, cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "auto-invest config updated", "data": nil})
+}

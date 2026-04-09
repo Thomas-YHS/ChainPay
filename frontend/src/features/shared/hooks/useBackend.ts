@@ -1,6 +1,6 @@
 import { useAccount } from 'wagmi'
 import { API_URL } from '../../../theme'
-import type { Employee, PayrollLog } from '../../../store'
+import type { Employee, PayrollLog, Vault } from '../../../store'
 
 export function useBackend() {
   const { address } = useAccount()
@@ -45,11 +45,41 @@ export function useBackend() {
   }
 
   async function getPayrollLogs(): Promise<PayrollLog[]> {
-    const res = await fetch(`${API_URL}/payroll-logs`, { headers: headers() })
+    const res = await fetch(`${API_URL}/payroll/logs`, { headers: headers() })
     const json = await res.json()
     if (json.code !== 200) throw new Error(json.message)
     return json.data.logs ?? []
   }
 
-  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs }
+  async function getVaults(): Promise<Vault[]> {
+    const res = await fetch(`${API_URL}/vaults`)
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+    return json.data.vaults ?? []
+  }
+
+  async function getAutoInvest(wallet: string) {
+    const res = await fetch(`${API_URL}/employees/${wallet}/auto-invest`, { headers: headers() })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+    return json.data
+  }
+
+  async function updateAutoInvest(wallet: string, data: {
+    enabled: boolean
+    vault_id: string
+    invest_type: string
+    invest_value: string
+  }) {
+    const res = await fetch(`${API_URL}/employees/${wallet}/auto-invest`, {
+      method: 'PATCH',
+      headers: headers(),
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+    return json.data
+  }
+
+  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest }
 }

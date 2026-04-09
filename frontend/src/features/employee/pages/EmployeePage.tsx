@@ -6,6 +6,7 @@ import { useGetRules } from '../../shared/hooks/useContract'
 import TopNav from '../../shared/components/TopNav'
 import RulesForm from '../components/RulesForm'
 import RulesDone from '../components/RulesDone'
+import AutoInvestModal from '../components/AutoInvestModal'
 import type { Employee } from '../../../store'
 
 type EmployeeState = 'connecting' | 'checking' | 'not-found' | 'setup' | 'done'
@@ -18,6 +19,7 @@ export default function EmployeePage() {
   const [state, setState] = useState<EmployeeState>('connecting')
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [savedTxHash, setSavedTxHash] = useState<string | undefined>()
+  const [showAutoInvest, setShowAutoInvest] = useState(false)
 
   const { data: onChainRules } = useGetRules(address)
   const hasOnChainRules = onChainRules && onChainRules.length > 0
@@ -92,7 +94,31 @@ export default function EmployeePage() {
         {state === 'setup' && <RulesForm onSaved={handleRulesSaved} />}
 
         {state === 'done' && onChainRules && (
-          <RulesDone rules={onChainRules} txHash={savedTxHash} />
+          <>
+            <RulesDone rules={onChainRules} txHash={savedTxHash} />
+            <div className="mt-6">
+              <button
+                onClick={() => setShowAutoInvest(true)}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: '#1e2030', border: '1px solid #6366f1', color: '#a5b4fc' }}
+              >
+                💰 配置自动定投理财
+              </button>
+            </div>
+          </>
+        )}
+
+        {showAutoInvest && employee && (
+          <AutoInvestModal
+            wallet={employee.wallet_address}
+            currentEnabled={employee.auto_invest_enabled}
+            currentVaultID={employee.auto_invest_vault_id}
+            currentInvestType={employee.auto_invest_type}
+            currentInvestValue={employee.auto_invest_value}
+            salaryAmount={employee.salary_amount}
+            onClose={() => setShowAutoInvest(false)}
+            onSaved={() => {}}
+          />
         )}
       </div>
     </div>

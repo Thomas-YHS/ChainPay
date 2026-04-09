@@ -56,3 +56,6 @@ keystore/
 # Environment files
 .env
 .superpowers/
+
+# Backend config (contains secrets)
+backend/config.yaml

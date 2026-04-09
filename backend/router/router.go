@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.PayrollHandler) *gin.Engine {
+func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.PayrollHandler, vaultHandler *handlers.VaultHandler) *gin.Engine {
 	// L-1 fixed: use gin.New() instead of gin.Default() so we control middleware explicitly
 	r := gin.New()
 	r.Use(gin.Logger())            // request log
@@ -26,6 +26,8 @@ func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.P
 			employees.DELETE("/:wallet_address", employeeHandler.Delete)
 			employees.GET("/:wallet_address/verify", employeeHandler.Verify)
 			employees.PATCH("/:wallet_address/rules-status", employeeHandler.UpdateRulesStatus)
+			employees.GET("/:wallet_address/auto-invest", employeeHandler.GetAutoInvest)
+			employees.PATCH("/:wallet_address/auto-invest", employeeHandler.UpdateAutoInvest)
 		}
 
 		payroll := api.Group("/payroll")
@@ -35,6 +37,9 @@ func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.P
 			payroll.GET("/logs", payrollHandler.ListLogs)
 			payroll.GET("/logs/:id", payrollHandler.GetLog)
 		}
+
+		// Vault discovery (no wallet auth required — read-only)
+		api.GET("/vaults", vaultHandler.List)
 	}
 
 	// Health check (no auth)

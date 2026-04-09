@@ -33,11 +33,12 @@ type PayrollService struct {
 	cfg       *config.Config
 	ethClient *ethclient.Client
 	nonceMgr  *NonceManager
+	earnSvc   *EarnService
 }
 
-// NewPayrollService accepts a shared ethclient and NonceManager injected from main.
-func NewPayrollService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager) *PayrollService {
-	return &PayrollService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm}
+// NewPayrollService accepts a shared ethclient, NonceManager, and EarnService injected from main.
+func NewPayrollService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager, earnSvc *EarnService) *PayrollService {
+	return &PayrollService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm, earnSvc: earnSvc}
 }
 
 func (s *PayrollService) DB() *gorm.DB { return s.db }
@@ -300,7 +301,47 @@ func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, 
 
 	go s.awaitReceipt(signedTx.Hash(), logEntry.ID)
 
+	// Auto-invest: trigger after tx is sent if earn is enabled
+	if s.earnSvc != nil && s.cfg.Blockchain.EarnEnabled {
+		go s.triggerAutoInvest(employeeAddress, salaryAmount)
+	}
+
 	return logEntry, nil
+}
+
+// triggerAutoInvest checks if the employee has auto-invest configured and deposits funds into the vault.
+func (s *PayrollService) triggerAutoInvest(employeeAddress string, salaryAmount decimal.Decimal) {
+	var emp db.Employee
+	if err := s.db.Where("wallet_address = ?", employeeAddress).First(&emp).Error; err != nil {
+		log.Printf("triggerAutoInvest: employee not found: %s", employeeAddress)
+		return
+	}
+	if !emp.AutoInvestEnabled || emp.AutoInvestVaultID == "" {
+		return
+	}
+
+	investAmount, err := CalculateAutoInvestValue(salaryAmount, emp.AutoInvestType, emp.AutoInvestValue)
+	if err != nil {
+		log.Printf("triggerAutoInvest: invalid config for %s: %v", employeeAddress, err)
+		return
+	}
+	if investAmount.LessThanOrEqual(decimal.Zero) {
+		return
+	}
+
+	usdcAddress := "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+	txHash, err := s.earnSvc.ExecuteDeposit(
+		emp.AutoInvestVaultID,
+		s.cfg.Blockchain.ChainPayContract, // from the contract
+		emp.WalletAddress,                  // to the employee
+		investAmount.Shift(6).String(),    // shift to USDC decimals
+		usdcAddress,
+	)
+	if err != nil {
+		log.Printf("triggerAutoInvest: deposit failed for %s: %v", employeeAddress, err)
+		return
+	}
+	log.Printf("triggerAutoInvest: deposited %s USDC for %s (tx=%s)", investAmount.String(), employeeAddress, txHash)
 }
 
 // awaitReceipt polls for the transaction receipt and updates the payroll log status.

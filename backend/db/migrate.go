@@ -6,18 +6,23 @@ import (
 )
 
 type Employee struct {
-	ID               uint64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	EmployerAddress  string  `gorm:"type:varchar(42);not null;index" json:"employer_address"`
-	Name             string  `gorm:"type:varchar(100);not null" json:"name"`
-	Nickname         string  `gorm:"type:varchar(100)" json:"nickname"`
-	WalletAddress    string  `gorm:"type:varchar(42);not null;uniqueIndex" json:"wallet_address"`
+	ID               uint64          `gorm:"primaryKey;autoIncrement" json:"id"`
+	EmployerAddress  string          `gorm:"type:varchar(42);not null;index" json:"employer_address"`
+	Name             string          `gorm:"type:varchar(100);not null" json:"name"`
+	Nickname         string          `gorm:"type:varchar(100)" json:"nickname"`
+	WalletAddress    string          `gorm:"type:varchar(42);not null;uniqueIndex" json:"wallet_address"`
 	SalaryAmount     decimal.Decimal `gorm:"type:numeric;not null" json:"salary_amount"`
-	PayFrequency     string  `gorm:"type:varchar(10);not null" json:"pay_frequency"`
-	HasRules         bool    `gorm:"not null;default:false" json:"has_rules"`
-	CronEnabled      bool    `gorm:"not null;default:true" json:"cron_enabled"`
-	NextPayDate      int64   `gorm:"not null" json:"next_pay_date"` // Unix timestamp
-	CreatedAt        int64   `gorm:"not null" json:"created_at"`
-	UpdatedAt        int64   `gorm:"not null" json:"updated_at"`
+	PayFrequency     string          `gorm:"type:varchar(10);not null" json:"pay_frequency"`
+	HasRules         bool            `gorm:"not null;default:false" json:"has_rules"`
+	CronEnabled      bool            `gorm:"not null;default:true" json:"cron_enabled"`
+	NextPayDate      int64           `gorm:"not null" json:"next_pay_date"` // Unix timestamp
+	CreatedAt        int64           `gorm:"not null" json:"created_at"`
+	UpdatedAt        int64           `gorm:"not null" json:"updated_at"`
+	// Auto-invest fields
+	AutoInvestEnabled bool            `gorm:"not null;default:false" json:"auto_invest_enabled"`
+	AutoInvestVaultID string          `gorm:"type:varchar(100)" json:"auto_invest_vault_id"`
+	AutoInvestType    string          `gorm:"type:varchar(10)" json:"auto_invest_type"`    // "percentage" or "fixed"
+	AutoInvestValue   decimal.Decimal `gorm:"type:numeric" json:"auto_invest_value"`    // 0.1 (=10%) or 50 (=50 USDC)
 }
 
 type PayrollLog struct {

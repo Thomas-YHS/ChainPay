@@ -14,7 +14,7 @@ createConfig({ integrator: 'ChainPay' })
 
 const wagmiConfig = getDefaultConfig({
   appName: 'ChainPay',
-  projectId: 'chainpay-hackathon',
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string,
   chains: [base],
 })
 
