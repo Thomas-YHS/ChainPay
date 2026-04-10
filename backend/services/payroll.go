@@ -25,6 +25,46 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	USDC_BASE         = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+	LIFI_DIAMOND_BASE = "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"
+	BASE_CHAIN_ID     = 8453
+)
+
+// composerQuoteAPIResponse 对应 GET /v1/quote 的响应格式
+type composerQuoteAPIResponse struct {
+	Action struct {
+		FromToken struct {
+			Address  string `json:"address"`
+			Symbol   string `json:"symbol"`
+			Decimals int    `json:"decimals"`
+		} `json:"fromToken"`
+		ToToken struct {
+			Address  string `json:"address"`
+			Symbol   string `json:"symbol"`
+			Decimals int    `json:"decimals"`
+		} `json:"toToken"`
+		FromAmount  string `json:"fromAmount"`
+		FromAddress string `json:"fromAddress"`
+		ToAddress   string `json:"toAddress"`
+	} `json:"action"`
+	Estimate struct {
+		ApprovalAddress string `json:"approvalAddress"`
+		ToAmount        string `json:"toAmount"`
+		ToAmountMin     string `json:"toAmountMin"`
+		FromAmount      string `json:"fromAmount"`
+	} `json:"estimate"`
+	TransactionRequest struct {
+		To       string `json:"to"`
+		Data     string `json:"data"`
+		Value    string `json:"value"`
+		GasLimit string `json:"gasLimit"`
+		GasPrice string `json:"gasPrice"`
+		ChainID  int64  `json:"chainId"`
+		From     string `json:"from"`
+	} `json:"transactionRequest"`
+}
+
 // lifiHTTPClient has an explicit timeout to prevent goroutine leaks on slow API responses.
 var lifiHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
@@ -97,6 +137,51 @@ func (s *PayrollService) GetRulesFromChain(employeeAddress string) ([]Rule, erro
 		}
 	}
 	return rules, nil
+}
+
+// BuildComposerQuote 调用 GET /v1/quote，返回解析后的 transactionRequest。
+// fromAddress = 后端钱包地址（来自 ExecutorPrivateKey）
+func (s *PayrollService) BuildComposerQuote(
+	fromAddress string,
+	toAddress string,
+	fromToken string,
+	toToken string,
+	fromAmount string,
+) (to, data, value, gasLimit, chainId, fromAddr string, err error) {
+	if s.cfg.Blockchain.LiFiAPIKey == "" {
+		return "", "", "", "", "", "", errors.New("LIFI_API_KEY not configured")
+	}
+
+	url := fmt.Sprintf(
+		"https://li.quest/v1/quote?fromChain=%d&toChain=%d&fromToken=%s&toToken=%s&fromAddress=%s&toAddress=%s&fromAmount=%s",
+		BASE_CHAIN_ID, BASE_CHAIN_ID, fromToken, toToken, fromAddress, toAddress, fromAmount,
+	)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", "", "", "", "", "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.cfg.Blockchain.LiFiAPIKey)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := lifiHTTPClient.Do(req)
+	if err != nil {
+		return "", "", "", "", "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", "", "", "", "", "", fmt.Errorf("Li.Fi API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var quote composerQuoteAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&quote); err != nil {
+		return "", "", "", "", "", "", err
+	}
+
+	txReq := quote.TransactionRequest
+	return txReq.To, txReq.Data, txReq.Value, txReq.GasLimit, fmt.Sprintf("%d", txReq.ChainID), txReq.From, nil
 }
 
 // BuildLiFiCalldata generates Li.Fi swap calldata for each rule.
