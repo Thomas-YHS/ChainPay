@@ -1,7 +1,7 @@
 # ChainPay 代码审计总览
 
-> 当前版本：v0.4（LiFi Earn 集成）
-> 总览更新：2026-04-09
+> 当前版本：v0.5（Pure Composer 发薪架构）
+> 总览更新：2026-04-10
 
 ---
 
@@ -15,6 +15,7 @@
 | Go 后端 Config/DB 层 | 🟢 Low | YAML 配置 + decimal + cron_enabled + earn_enabled 开关 | 可部署 |
 | Go 后端 Cron | 🟢 Low | 全局 + 员工级双重开关 | 可部署 |
 | LiFi Earn 集成 | 🟡 Medium | Code Review 发现 5 个问题，已全部修复 | 可部署 |
+| Pure Composer 发薪 | 🔴 High（架构风险）| 后端钱包单点故障，生产前需迁移 Gnosis Safe | MVP 可用 |
 
 ---
 
