@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { useBackend } from '../../shared/hooks/useBackend'
-import { useGetRules } from '../../shared/hooks/useContract'
 import TopNav from '../../shared/components/TopNav'
 import RulesForm from '../components/RulesForm'
 import RulesDone from '../components/RulesDone'
@@ -21,9 +20,6 @@ export default function EmployeePage() {
   const [savedTxHash, setSavedTxHash] = useState<string | undefined>()
   const [showAutoInvest, setShowAutoInvest] = useState(false)
 
-  const { data: onChainRules } = useGetRules(address)
-  const hasOnChainRules = onChainRules && onChainRules.length > 0
-
   useEffect(() => {
     if (!isConnected || !address) {
       setState('connecting')
@@ -35,18 +31,10 @@ export default function EmployeePage() {
         setState('not-found')
       } else {
         setEmployee(emp)
+        setState(emp.has_rules ? 'done' : 'setup')
       }
     }).catch(() => setState('not-found'))
   }, [isConnected, address])
-
-  useEffect(() => {
-    if (!employee) return
-    if (hasOnChainRules) {
-      setState('done')
-    } else {
-      setState('setup')
-    }
-  }, [employee, hasOnChainRules])
 
   function handleRulesSaved(txHash: string) {
     setSavedTxHash(txHash)
@@ -93,9 +81,9 @@ export default function EmployeePage() {
 
         {state === 'setup' && <RulesForm onSaved={handleRulesSaved} />}
 
-        {state === 'done' && onChainRules && (
+        {state === 'done' && (
           <>
-            <RulesDone rules={onChainRules} txHash={savedTxHash} />
+            <RulesDone txHash={savedTxHash} />
             <div className="mt-6">
               <button
                 onClick={() => setShowAutoInvest(true)}
