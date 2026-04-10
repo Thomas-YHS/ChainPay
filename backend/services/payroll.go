@@ -1,8 +1,8 @@
 package services
 
 import (
-	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -184,225 +184,226 @@ func (s *PayrollService) BuildComposerQuote(
 	return txReq.To, txReq.Data, txReq.Value, txReq.GasLimit, fmt.Sprintf("%d", txReq.ChainID), txReq.From, nil
 }
 
-// BuildLiFiCalldata generates Li.Fi swap calldata for each rule.
-// toAddress is the employee's wallet — Li.Fi will deliver swapped tokens there.
-func (s *PayrollService) BuildLiFiCalldata(amount string, rules []Rule, toAddress string) ([][]byte, error) {
-	if s.cfg.Blockchain.LiFiAPIKey == "" {
-		return nil, errors.New("LIFI_API_KEY not configured")
+// approveUSDC 授权 LiFi Diamond 支配后端钱包的 USDC，并等待交易上链。
+func (s *PayrollService) approveUSDC(ctx context.Context, amount *big.Int) (string, error) {
+	privateKey, err := crypto.HexToECDSA(strings.TrimPrefix(s.cfg.Blockchain.ExecutorPrivateKey, "0x"))
+	if err != nil {
+		return "", err
 	}
 
-	usdcAddress := "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-	var calldatas [][]byte
-
-	for _, rule := range rules {
-		amountBig, ok := new(big.Int).SetString(amount, 10)
-		if !ok {
-			return nil, errors.New("invalid amount")
-		}
-		ruleAmount := new(big.Int).Mul(amountBig, rule.Percentage)
-		ruleAmount = new(big.Int).Div(ruleAmount, big.NewInt(10000))
-
-		payload := lifiSwapRequest{
-			FromTokenAddress: usdcAddress,
-			ToTokenAddress:   rule.TokenAddress.Hex(),
-			FromAddress:      s.cfg.Blockchain.ChainPayContract,
-			ToAddress:        toAddress, // M-7 fixed: was always ""
-			FromAmount:       ruleAmount.String(),
-			Slippage:         0.01,
-			ChainID:          rule.ChainID.Int64(),
-		}
-
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return nil, err
-		}
-
-		// C-2 fixed: response body closed inside anonymous function, not deferred to loop end
-		body, err := func() ([]byte, error) {
-			req, err := http.NewRequest("POST", "https://api.li.fi/v1/advanced/swap-and-execute", bytes.NewReader(data))
-			if err != nil {
-				return nil, err
-			}
-			req.Header.Set("Authorization", "Bearer "+s.cfg.Blockchain.LiFiAPIKey)
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err := lifiHTTPClient.Do(req) // H-6 fixed: uses client with 15s timeout
-			if err != nil {
-				return nil, err
-			}
-			defer resp.Body.Close()
-
-			b, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return nil, err
-			}
-			if resp.StatusCode != http.StatusOK {
-				return nil, fmt.Errorf("Li.Fi API error %d: %s", resp.StatusCode, string(b))
-			}
-			return b, nil
-		}()
-		if err != nil {
-			return nil, err
-		}
-
-		var lifiResp lifiSwapResponse
-		if err := json.Unmarshal(body, &lifiResp); err != nil {
-			return nil, err
-		}
-
-		if len(lifiResp.Steps) == 0 {
-			continue
-		}
-		calldatas = append(calldatas, lifiResp.Steps[0].Action.Calldata)
+	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(BASE_CHAIN_ID))
+	if err != nil {
+		return "", err
 	}
 
-	return calldatas, nil
+	usdcAddr := common.HexToAddress(USDC_BASE)
+	lifiAddr := common.HexToAddress(LIFI_DIAMOND_BASE)
+
+	// ABI-encode approve(spender, amount)
+	erc20ABI := mustParseABI(`[{"type":"function","name":"approve","inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}]}]`)
+	data, err := erc20ABI.Pack("approve", lifiAddr, amount)
+	if err != nil {
+		return "", err
+	}
+
+	msg := ethereum.CallMsg{From: auth.From, To: &usdcAddr, Data: data}
+	gasLimit, err := s.ethClient.EstimateGas(ctx, msg)
+	if err != nil {
+		gasLimit = 100000
+	}
+
+	nonce, err := s.nonceMgr.Next(ctx)
+	if err != nil {
+		s.nonceMgr.Reset()
+		return "", fmt.Errorf("get nonce: %w", err)
+	}
+	gasPrice, err := s.ethClient.SuggestGasPrice(ctx)
+	if err != nil {
+		s.nonceMgr.Reset()
+		return "", fmt.Errorf("get gas price: %w", err)
+	}
+
+	tx := types.NewTransaction(nonce, usdcAddr, nil, gasLimit, gasPrice, data)
+	signedTx, err := auth.Signer(auth.From, tx)
+	if err != nil {
+		s.nonceMgr.Reset()
+		return "", err
+	}
+
+	if err := s.ethClient.SendTransaction(ctx, signedTx); err != nil {
+		s.nonceMgr.Reset()
+		return "", err
+	}
+
+	// Wait for approve to be mined before proceeding with Composer call
+	if _, err := bind.WaitMined(ctx, s.ethClient, signedTx); err != nil {
+		log.Printf("approveUSDC: WaitMined warning: %v", err)
+	}
+
+	return signedTx.Hash().Hex(), nil
 }
 
-type lifiSwapRequest struct {
-	FromTokenAddress string  `json:"fromTokenAddress"`
-	ToTokenAddress   string  `json:"toTokenAddress"`
-	FromAddress      string  `json:"fromAddress"`
-	ToAddress        string  `json:"toAddress"`
-	FromAmount       string  `json:"fromAmount"`
-	Slippage         float64 `json:"slippage"`
-	ChainID          int64   `json:"chainId,omitempty"`
-}
-
-type lifiSwapResponse struct {
-	Steps []struct {
-		Action struct {
-			Calldata []byte `json:"calldata"`
-		} `json:"action"`
-	} `json:"steps"`
-}
-
-// ExecutePayout builds Li.Fi calldata, signs and broadcasts the executePayout tx,
-// records the tx_hash immediately, then confirms the receipt asynchronously.
-func (s *PayrollService) ExecutePayout(employerAddress, employeeAddress string, salaryAmount decimal.Decimal, triggerType string) (*db.PayrollLog, error) {
+// ExecutePayout 使用纯 Composer 触发发薪（无需 ChainPay 合约）。
+// 每条规则执行流程：
+//  1. 后端 approve USDC 给 LiFi Diamond
+//  2. 后端调用 GET /v1/quote（fromAddress = 后端钱包）
+//  3. 后端签名并提交 transactionRequest
+//  4. LiFi 从后端钱包拉取 USDC → 路由到员工
+func (s *PayrollService) ExecutePayout(
+	employerAddress,
+	employeeAddress string,
+	salaryAmount decimal.Decimal,
+	triggerType string,
+) (*db.PayrollLog, error) {
 	if s.cfg.Blockchain.ExecutorPrivateKey == "" {
 		return nil, errors.New("executor private key not configured")
 	}
-	if s.cfg.Blockchain.ChainPayContract == "" {
-		return nil, errors.New("contract address not configured")
-	}
 	if s.ethClient == nil {
 		return nil, errors.New("eth client not available")
-	}
-
-	rules, err := s.GetRulesFromChain(employeeAddress)
-	if err != nil {
-		return nil, err
-	}
-	if len(rules) == 0 {
-		return nil, errors.New("no rules configured for employee")
-	}
-
-	salaryStr := salaryAmount.Shift(6).String()
-	calldatas, err := s.BuildLiFiCalldata(salaryStr, rules, employeeAddress) // M-7 fixed
-	if err != nil {
-		return nil, err
 	}
 
 	privateKey, err := crypto.HexToECDSA(strings.TrimPrefix(s.cfg.Blockchain.ExecutorPrivateKey, "0x"))
 	if err != nil {
 		return nil, err
 	}
+	backendWallet := crypto.PubkeyToAddress(privateKey.PublicKey)
+	salaryStr := salaryAmount.Shift(6).String() // USDC 精度 6 位
 
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(8453))
-	if err != nil {
-		return nil, err
-	}
-
-	contractAddr := common.HexToAddress(s.cfg.Blockchain.ChainPayContract)
-	employerAddr := common.HexToAddress(employerAddress)
-	employeeAddr := common.HexToAddress(employeeAddress)
-	totalAmount := salaryAmount.Shift(6).BigInt()
-
-	input, err := chainPayABI.Pack("executePayout", employerAddr, employeeAddr, totalAmount, calldatas)
-	if err != nil {
-		return nil, err
+	// 获取员工规则，无规则则直接转 USDC（100%）
+	rules, err := s.GetRulesFromChain(employeeAddress)
+	if err != nil || len(rules) == 0 {
+		rules = []Rule{{
+			ChainID:      big.NewInt(BASE_CHAIN_ID),
+			TokenAddress: common.HexToAddress(USDC_BASE),
+			Percentage:   big.NewInt(10000),
+		}}
 	}
 
 	ctx := context.Background()
-
-	// Estimate gas
-	msg := ethereum.CallMsg{From: auth.From, To: &contractAddr, Data: input}
-	gasLimit, err := s.ethClient.EstimateGas(ctx, msg)
+	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(BASE_CHAIN_ID))
 	if err != nil {
-		gasLimit = 500000
-	}
-
-	// C-1 fixed: fetch nonce via shared manager and current gas price
-	nonce, err := s.nonceMgr.Next(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get nonce: %w", err)
-	}
-	gasPrice, err := s.ethClient.SuggestGasPrice(ctx)
-	if err != nil {
-		s.nonceMgr.Reset()
-		return nil, fmt.Errorf("get gas price: %w", err)
-	}
-
-	tx := types.NewTransaction(nonce, contractAddr, nil, gasLimit, gasPrice, input)
-	signedTx, err := auth.Signer(auth.From, tx)
-	if err != nil {
-		s.nonceMgr.Reset()
 		return nil, err
 	}
 
-	now := time.Now().Unix()
-	logEntry := &db.PayrollLog{
-		EmployerAddress: employerAddress,
-		EmployeeAddress: employeeAddress,
-		Amount:          salaryAmount,
-		Status:          "pending",
-		TriggerType:     triggerType,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-	if err := s.db.Create(logEntry).Error; err != nil {
-		s.nonceMgr.Reset()
-		return nil, err
-	}
+	var lastTxHash string
+	for _, rule := range rules {
+		// 计算规则金额
+		amountBig, _ := new(big.Int).SetString(salaryStr, 10)
+		ruleAmount := new(big.Int).Mul(amountBig, rule.Percentage)
+		ruleAmount = new(big.Int).Div(ruleAmount, big.NewInt(10000))
+		if ruleAmount.Cmp(big.NewInt(0)) == 0 {
+			continue
+		}
+		ruleAmountStr := ruleAmount.String()
 
-	if err := s.ethClient.SendTransaction(ctx, signedTx); err != nil {
-		s.nonceMgr.Reset()
+		// 步骤 1: Approve USDC 给 LiFi Diamond（并等待上链）
+		approveTxHash, err := s.approveUSDC(ctx, ruleAmount)
+		if err != nil {
+			return nil, fmt.Errorf("approve failed: %w", err)
+		}
+		log.Printf("ExecutePayout: approved %s USDC (tx=%s)", ruleAmountStr, approveTxHash)
+
+		// 步骤 2: 获取 Composer quote
+		to, txDataHex, value, gasLimitHex, _, _, err := s.BuildComposerQuote(
+			backendWallet.Hex(),     // fromAddress = 后端钱包
+			employeeAddress,          // toAddress = 员工
+			USDC_BASE,               // fromToken = USDC
+			rule.TokenAddress.Hex(), // toToken
+			ruleAmountStr,           // fromAmount
+		)
+		if err != nil {
+			return nil, fmt.Errorf("composer quote failed: %w", err)
+		}
+
+		// 步骤 3: 签名并提交交易
+		toAddr := common.HexToAddress(to)
+		txData, _ := hex.DecodeString(strings.TrimPrefix(txDataHex, "0x"))
+		txValue := new(big.Int)
+		if value != "" && value != "0x0" && value != "0x" {
+			txValue.SetString(strings.TrimPrefix(value, "0x"), 16)
+		}
+		txGasLimit := new(big.Int)
+		txGasLimit.SetString(strings.TrimPrefix(gasLimitHex, "0x"), 16)
+		if txGasLimit.Cmp(big.NewInt(0)) == 0 {
+			txGasLimit = big.NewInt(500000)
+		}
+
+		nonce, err := s.nonceMgr.Next(ctx)
+		if err != nil {
+			s.nonceMgr.Reset()
+			return nil, fmt.Errorf("get nonce: %w", err)
+		}
+		gasPrice, err := s.ethClient.SuggestGasPrice(ctx)
+		if err != nil {
+			s.nonceMgr.Reset()
+			return nil, fmt.Errorf("get gas price: %w", err)
+		}
+
+		tx := types.NewTransaction(nonce, toAddr, txValue, txGasLimit.Uint64(), gasPrice, txData)
+		signedTx, err := auth.Signer(auth.From, tx)
+		if err != nil {
+			s.nonceMgr.Reset()
+			return nil, err
+		}
+
+		// 记录发薪日志
+		now := time.Now().Unix()
+		logEntry := &db.PayrollLog{
+			EmployerAddress: employerAddress,
+			EmployeeAddress: employeeAddress,
+			Amount:          salaryAmount,
+			Status:          "pending",
+			TriggerType:     triggerType,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}
+		if err := s.db.Create(logEntry).Error; err != nil {
+			s.nonceMgr.Reset()
+			return nil, err
+		}
+
+		if err := s.ethClient.SendTransaction(ctx, signedTx); err != nil {
+			s.nonceMgr.Reset()
+			s.db.Model(logEntry).Updates(map[string]interface{}{
+				"status":        "failed",
+				"error_message": err.Error(),
+				"updated_at":    time.Now().Unix(),
+			})
+			return nil, err
+		}
+
+		lastTxHash = signedTx.Hash().Hex()
 		s.db.Model(logEntry).Updates(map[string]interface{}{
-			"status":        "failed",
-			"error_message": err.Error(),
-			"updated_at":    time.Now().Unix(),
+			"tx_hash":    lastTxHash,
+			"updated_at": time.Now().Unix(),
 		})
-		return nil, err
+		logEntry.TxHash = lastTxHash
+
+		// 异步等待回执
+		go s.awaitReceipt(signedTx.Hash(), logEntry.ID)
 	}
 
-	// C-3 fixed: record tx_hash immediately, then confirm asynchronously
-	txHash := signedTx.Hash().Hex()
-	s.db.Model(logEntry).Updates(map[string]interface{}{
-		"tx_hash":    txHash,
-		"updated_at": time.Now().Unix(),
-	})
-	logEntry.TxHash = txHash
-
-	go s.awaitReceipt(signedTx.Hash(), logEntry.ID)
-
-	// Auto-invest: trigger after tx is sent if earn is enabled
+	// 自动定投
 	if s.earnSvc != nil && s.cfg.Blockchain.EarnEnabled {
-		go s.triggerAutoInvest(employeeAddress, salaryAmount)
+		go s.triggerAutoInvestPureComposer(employeeAddress, salaryAmount, backendWallet.Hex())
 	}
 
-	return logEntry, nil
+	return &db.PayrollLog{
+		TxHash: lastTxHash,
+		Status: "pending",
+	}, nil
 }
 
-// triggerAutoInvest checks if the employee has auto-invest configured and deposits funds into the vault.
-func (s *PayrollService) triggerAutoInvest(employeeAddress string, salaryAmount decimal.Decimal) {
+// triggerAutoInvestPureComposer 将部分薪资存入 LiFi Earn 理财。
+// 对于纯 Composer 架构，资金来自后端钱包。
+func (s *PayrollService) triggerAutoInvestPureComposer(
+	employeeAddress string,
+	salaryAmount decimal.Decimal,
+	fromAddress string,
+) {
 	var emp db.Employee
 	if err := s.db.Where("wallet_address = ?", employeeAddress).First(&emp).Error; err != nil {
-		log.Printf("triggerAutoInvest: employee not found: %s", employeeAddress)
-		return
-	}
-	if !emp.HasRules {
-		log.Printf("triggerAutoInvest: skipping %s, no on-chain rules", employeeAddress)
+		log.Printf("triggerAutoInvestPureComposer: employee not found: %s", employeeAddress)
 		return
 	}
 	if !emp.AutoInvestEnabled || emp.AutoInvestVaultID == "" {
@@ -410,27 +411,22 @@ func (s *PayrollService) triggerAutoInvest(employeeAddress string, salaryAmount 
 	}
 
 	investAmount, err := CalculateAutoInvestValue(salaryAmount, emp.AutoInvestType, emp.AutoInvestValue)
-	if err != nil {
-		log.Printf("triggerAutoInvest: invalid config for %s: %v", employeeAddress, err)
-		return
-	}
-	if investAmount.LessThanOrEqual(decimal.Zero) {
+	if err != nil || investAmount.LessThanOrEqual(decimal.Zero) {
 		return
 	}
 
-	usdcAddress := "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 	txHash, err := s.earnSvc.ExecuteDeposit(
 		emp.AutoInvestVaultID,
-		s.cfg.Blockchain.ChainPayContract, // from the contract
-		emp.WalletAddress,                  // to the employee
-		investAmount.Shift(6).String(),    // shift to USDC decimals
-		usdcAddress,
+		fromAddress,
+		emp.WalletAddress,
+		investAmount.Shift(6).String(),
+		USDC_BASE,
 	)
 	if err != nil {
-		log.Printf("triggerAutoInvest: deposit failed for %s: %v", employeeAddress, err)
+		log.Printf("triggerAutoInvestPureComposer: deposit failed for %s: %v", employeeAddress, err)
 		return
 	}
-	log.Printf("triggerAutoInvest: deposited %s USDC for %s (tx=%s)", investAmount.String(), employeeAddress, txHash)
+	log.Printf("triggerAutoInvestPureComposer: deposited %s USDC for %s (tx=%s)", investAmount.String(), employeeAddress, txHash)
 }
 
 // awaitReceipt polls for the transaction receipt and updates the payroll log status.
