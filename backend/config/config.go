@@ -58,6 +58,9 @@ func Load() (*Config, error) {
 	if cfg.Database.Password == "" {
 		return nil, fmt.Errorf("database.password is required in config.yaml")
 	}
+	if cfg.Blockchain.ExecutorPrivateKey == "" {
+		return nil, fmt.Errorf("blockchain.executor_private_key is required for Pure Composer payroll")
+	}
 
 	// Apply defaults
 	if cfg.Server.Port == "" {
