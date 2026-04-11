@@ -38,6 +38,16 @@ type PayrollLog struct {
 	UpdatedAt        int64   `gorm:"not null" json:"updated_at"`
 }
 
+type EmployeeRule struct {
+	ID              uint64 `gorm:"primaryKey;autoIncrement" json:"id"`
+	EmployeeAddress string `gorm:"type:varchar(42);not null;index" json:"employee_address"`
+	ChainID         int64  `gorm:"not null" json:"chain_id"`
+	TokenAddress    string `gorm:"type:varchar(42);not null" json:"token_address"`
+	Percentage      int64  `gorm:"not null" json:"percentage"` // 基数 10000，40% = 4000
+	CreatedAt       int64  `gorm:"not null" json:"created_at"`
+	UpdatedAt       int64  `gorm:"not null" json:"updated_at"`
+}
+
 func Migrate(database *gorm.DB) error {
-	return database.AutoMigrate(&Employee{}, &PayrollLog{})
+	return database.AutoMigrate(&Employee{}, &PayrollLog{}, &EmployeeRule{})
 }
