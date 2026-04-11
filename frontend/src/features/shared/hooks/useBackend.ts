@@ -81,5 +81,16 @@ export function useBackend() {
     return json.data
   }
 
-  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest }
+  async function triggerPayout(employeeWallet: string): Promise<{ tx_hash: string; status: string; log_id: number }> {
+    const res = await fetch(`${API_URL}/payroll/execute`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ employee_wallet: employeeWallet }),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+    return json.data
+  }
+
+  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest, triggerPayout }
 }
