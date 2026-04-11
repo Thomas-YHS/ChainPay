@@ -13,12 +13,17 @@ type EmployeeState = 'connecting' | 'checking' | 'not-found' | 'setup' | 'done'
 export default function EmployeePage() {
   const { address, isConnected } = useAccount()
   const { openConnectModal } = useConnectModal()
-  const { getEmployeeByWallet } = useBackend()
+  const { getEmployeeByWallet, getRulesMode } = useBackend()
 
   const [state, setState] = useState<EmployeeState>('connecting')
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [savedTxHash, setSavedTxHash] = useState<string | undefined>()
   const [showAutoInvest, setShowAutoInvest] = useState(false)
+  const [rulesMode, setRulesMode] = useState<'chain' | 'backend'>('chain')
+
+  useEffect(() => {
+    getRulesMode().then(setRulesMode)
+  }, [])
 
   useEffect(() => {
     if (!isConnected || !address) {
@@ -83,7 +88,7 @@ export default function EmployeePage() {
 
         {state === 'done' && (
           <>
-            <RulesDone txHash={savedTxHash} />
+            <RulesDone txHash={savedTxHash} mode={rulesMode} />
             <div className="mt-6">
               <button
                 onClick={() => setShowAutoInvest(true)}
