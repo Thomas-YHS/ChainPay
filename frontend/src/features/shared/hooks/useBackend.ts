@@ -92,5 +92,22 @@ export function useBackend() {
     return json.data
   }
 
-  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest, triggerPayout }
+  async function getRulesMode(): Promise<'chain' | 'backend'> {
+    const res = await fetch(`${API_URL}/config/rules-mode`)
+    const json = await res.json()
+    if (json.code !== 200) return 'chain' // 默认回退到 chain
+    return json.data.mode as 'chain' | 'backend'
+  }
+
+  async function saveRules(wallet: string, rules: { chain_id: number; token_address: string; percentage: number }[]): Promise<void> {
+    const res = await fetch(`${API_URL}/employees/${wallet}/rules`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(rules),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+  }
+
+  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest, triggerPayout, getRulesMode, saveRules }
 }
