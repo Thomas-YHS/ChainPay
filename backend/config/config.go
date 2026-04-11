@@ -33,6 +33,7 @@ type BlockchainConfig struct {
 	EthRPCURL          string `yaml:"eth_rpc_url"`
 	CronEnabled        bool   `yaml:"cron_enabled"`
 	EarnEnabled        bool   `yaml:"earn_enabled"`
+	RulesMode          string `yaml:"rules_mode"` // "chain" 或 "backend"，默认 "chain"
 }
 
 // Load reads config from config.yaml.
@@ -74,6 +75,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Blockchain.EthRPCURL == "" {
 		cfg.Blockchain.EthRPCURL = "https://mainnet.base.org"
+	}
+	if cfg.Blockchain.RulesMode == "" {
+		cfg.Blockchain.RulesMode = "chain"
 	}
 
 	return &cfg, nil
