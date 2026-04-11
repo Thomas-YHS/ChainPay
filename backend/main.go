@@ -51,10 +51,20 @@ func main() {
 		log.Println("WARNING: EXECUTOR_PRIVATE_KEY or CHAIN_PAY_CONTRACT not set — on-chain calls disabled")
 	}
 
+	// 根据配置选择规则存储实现
+	var rulesProvider services.RulesProvider
+	if cfg.Blockchain.RulesMode == "backend" {
+		rulesProvider = services.NewDBRulesProvider(gormDB)
+		log.Println("Rules mode: backend (PostgreSQL)")
+	} else {
+		rulesProvider = services.NewChainRulesProvider(cfg, ethClient)
+		log.Println("Rules mode: chain (contract)")
+	}
+
 	// Init services (inject shared ethclient and nonce manager)
-	employeeSvc := services.NewEmployeeService(gormDB, cfg, ethClient, nonceMgr)
+	employeeSvc := services.NewEmployeeService(gormDB, cfg, ethClient, nonceMgr, rulesProvider)
 	earnSvc := services.NewEarnService(cfg, ethClient, nonceMgr)
-	payrollSvc := services.NewPayrollService(gormDB, cfg, ethClient, nonceMgr, earnSvc)
+	payrollSvc := services.NewPayrollService(gormDB, cfg, ethClient, nonceMgr, earnSvc, rulesProvider)
 
 	// Init handlers
 	employeeHandler := handlers.NewEmployeeHandler(employeeSvc)
@@ -72,7 +82,8 @@ func main() {
 	}
 
 	// Start server
-	r := router.Setup(employeeHandler, payrollHandler, vaultHandler)
+	configHandler := handlers.NewConfigHandler(cfg)
+	r := router.Setup(employeeHandler, payrollHandler, vaultHandler, configHandler)
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Printf("ChainPay backend starting on %s", addr)
 	if err := r.Run(addr); err != nil {
