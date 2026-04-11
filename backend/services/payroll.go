@@ -74,11 +74,12 @@ type PayrollService struct {
 	ethClient *ethclient.Client
 	nonceMgr  *NonceManager
 	earnSvc   *EarnService
+	rules     RulesProvider
 }
 
-// NewPayrollService accepts a shared ethclient, NonceManager, and EarnService injected from main.
-func NewPayrollService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager, earnSvc *EarnService) *PayrollService {
-	return &PayrollService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm, earnSvc: earnSvc}
+// NewPayrollService accepts a shared ethclient, NonceManager, EarnService, and RulesProvider injected from main.
+func NewPayrollService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager, earnSvc *EarnService, rules RulesProvider) *PayrollService {
+	return &PayrollService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm, earnSvc: earnSvc, rules: rules}
 }
 
 func (s *PayrollService) DB() *gorm.DB { return s.db }
@@ -87,56 +88,6 @@ type Rule struct {
 	ChainID      *big.Int       `json:"chainId"`
 	TokenAddress common.Address `json:"tokenAddress"`
 	Percentage   *big.Int       `json:"percentage"`
-}
-
-func (s *PayrollService) GetRulesFromChain(employeeAddress string) ([]Rule, error) {
-	if s.cfg.Blockchain.ChainPayContract == "" {
-		return nil, errors.New("contract address not configured")
-	}
-	if s.ethClient == nil {
-		return nil, errors.New("eth client not available")
-	}
-
-	contractAddr := common.HexToAddress(s.cfg.Blockchain.ChainPayContract)
-	employeeAddr := common.HexToAddress(employeeAddress)
-
-	input, err := chainPayABI.Pack("getRules", employeeAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	msg := ethereum.CallMsg{From: employeeAddr, To: &contractAddr, Data: input}
-	result, err := s.ethClient.CallContract(context.Background(), msg, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	unpacked, err := chainPayABI.Unpack("getRules", result)
-	if err != nil {
-		return nil, err
-	}
-
-	var rules []Rule
-	if len(unpacked) > 0 {
-		if ruleSlice, ok := unpacked[0].([]interface{}); ok {
-			for _, r := range ruleSlice {
-				if ruleMap, ok := r.(map[string]interface{}); ok {
-					rule := Rule{}
-					if cid, ok := ruleMap["chainId"].(*big.Int); ok {
-						rule.ChainID = cid
-					}
-					if tok, ok := ruleMap["tokenAddress"].(common.Address); ok {
-						rule.TokenAddress = tok
-					}
-					if pct, ok := ruleMap["percentage"].(*big.Int); ok {
-						rule.Percentage = pct
-					}
-					rules = append(rules, rule)
-				}
-			}
-		}
-	}
-	return rules, nil
 }
 
 // BuildComposerQuote 调用 GET /v1/quote，返回解析后的 transactionRequest。
@@ -270,7 +221,7 @@ func (s *PayrollService) ExecutePayout(
 	salaryStr := salaryAmount.Shift(6).String() // USDC 精度 6 位
 
 	// 获取员工规则，无规则则直接转 USDC（100%）
-	rules, err := s.GetRulesFromChain(employeeAddress)
+	rules, err := s.rules.GetRules(employeeAddress)
 	if err != nil || len(rules) == 0 {
 		rules = []Rule{{
 			ChainID:      big.NewInt(BASE_CHAIN_ID),
