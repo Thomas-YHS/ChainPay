@@ -99,12 +99,12 @@ ChainPay/
 员工 → 连接钱包 → 验证身份（Go API）
      → 设置接收规则 → 写入链上合约（setRules，只能一次）
 
-发薪触发（手动 或 Go Cron 定时）
-     → 前端生成 Li.Fi calldata
-     → 执行者钱包调用 ChainPay 合约
-     → 合约从雇主钱包拉取 USDC
-     → 合约调用 Li.Fi Diamond 合约
-     → Li.Fi 路由到员工多链钱包
+发薪触发（手动 或 Go Cron 定时）— Pure Composer 模式
+     → 后端钱包 approve USDC 给 LiFi Diamond（等待上链）
+     → 后端调用 GET https://li.quest/v1/quote（fromAddress = 后端钱包）
+     → 后端签名并广播 transactionRequest
+     → LiFi 从后端钱包拉取 USDC → 路由到员工多链钱包
+     ⚠️ 不再调用 ChainPay 合约（合约仅用于员工 setRules）
 ```
 
 ### 数据存储边界
@@ -145,8 +145,9 @@ updateExecutor(address newExecutor)         // Owner 更换执行者
 ❌ 绝对不能 hardcode 私钥
 ❌ 绝对不能把 config.yaml 提交到 Git
 ✅ 敏感信息（私钥、数据库密码）只存 config.yaml，config.yaml 已加入 .gitignore
-✅ 执行者钱包不持有 USDC，只持有少量 ETH（Gas 费）
-✅ 雇主每次发薪 Approve 精确金额，不用无限授权
+✅ 执行者钱包需持有 USDC（发薪资金来源）+ 少量 ETH（Gas 费）
+✅ 每条规则 approve 精确金额，approve 后立即执行，不留多余 allowance
+⚠️ 后端钱包是单点故障，生产环境须迁移 Gnosis Safe
 ```
 
 ---
@@ -204,8 +205,9 @@ database:
   sslmode: "disable"
 blockchain:
   chain_pay_contract: ""     # 合约部署后填入
-  executor_private_key: ""   # 不填则 Cron 不启动
-  lifi_api_key: ""           # Li.Fi API Key（可选）
+  executor_private_key: ""   # 必填！不填则后端启动报错（Pure Composer 必须）
+  chain_pay_contract: ""     # 可选，不填则发薪回退为 100% USDC 直转
+  lifi_api_key: ""           # Li.Fi API Key（必填，否则 BuildComposerQuote 报错）
   eth_rpc_url: "https://mainnet.base.org"
 ```
 环境变量 `CONFIG_PATH` 可覆盖默认路径（默认 `config.yaml`）。
@@ -220,8 +222,9 @@ blockchain:
 ```
 ⚠️  Li.Fi 不支持测试网
 ✅  使用 Base 或 Gnosis Chain 主网测试（Gas 极低）
-✅  按比例拆分 = 多次调用 getRoutes，每次传对应金额
-✅  lifiCallData 由前端发薪前生成，传给合约执行
+✅  按比例拆分 = 每条规则调用一次 GET /v1/quote，分别广播
+✅  lifiCallData 由后端生成并直接签名广播（前端不再参与发薪执行）
+✅  GET li.quest/v1/quote 需传 fromAddress（后端钱包）、toAddress（员工）
 ```
 
 ---
@@ -232,8 +235,8 @@ blockchain:
 |---|---|---|
 | 前端 | ✅ 完成 | 落地页 + 雇主端 + 员工端 + Li.Fi 路由 + Zustand |
 | 合约 | ✅ 代码完成 | ChainPay.sol 277 行，待部署到 Base |
-| 后端 | ✅ 脚手架完成 | Gin + GORM + Cron，待联调合约 |
-| 联调 | 🔲 未开始 | 员工规则写入合约、发薪执行 |
+| 后端 | ✅ 完成 | Pure Composer 发薪，config.yaml 已配置 |
+| 联调 | 🔄 进行中 | 端到端测试：充值后端钱包 → curl 发薪 → Basescan 验证 |
 
 ---
 
