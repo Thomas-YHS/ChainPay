@@ -196,10 +196,8 @@ func (s *PayrollService) approveUSDC(ctx context.Context, amount *big.Int) (stri
 
 // ExecutePayout 使用纯 Composer 触发发薪（无需 ChainPay 合约）。
 // 每条规则执行流程：
-//  1. 后端 approve USDC 给 LiFi Diamond
-//  2. 后端调用 GET /v1/quote（fromAddress = 后端钱包）
-//  3. 后端签名并提交 transactionRequest
-//  4. LiFi 从后端钱包拉取 USDC → 路由到员工
+//  1. 后端调用 GET /v1/quote（fromAddress = 后端钱包），返回的 transactionRequest 已包含 approve data
+//  2. 后端签名并提交 transactionRequest（LiFi 一次性完成 approve + 跨链路由）
 func (s *PayrollService) ExecutePayout(
 	employerAddress,
 	employeeAddress string,
@@ -247,14 +245,10 @@ func (s *PayrollService) ExecutePayout(
 		}
 		ruleAmountStr := ruleAmount.String()
 
-		// 步骤 1: Approve USDC 给 LiFi Diamond（并等待上链）
-		approveTxHash, err := s.approveUSDC(ctx, ruleAmount)
-		if err != nil {
-			return nil, fmt.Errorf("approve failed: %w", err)
-		}
-		log.Printf("ExecutePayout: approved %s USDC (tx=%s)", ruleAmountStr, approveTxHash)
+		// 步骤 1: 获取 Composer quote（LiFi 返回的 transactionRequest 已包含授权数据，无需单独 Approve）
+		// 注意：后端钱包只需持有 USDC 余额，无需预先 Approve，LiFi 会在执行时自动完成授权
 
-		// 步骤 2: 获取 Composer quote
+		// 步骤 1: 构建 Composer quote
 		to, txDataHex, value, gasLimitHex, _, _, err := s.BuildComposerQuote(
 			backendWallet.Hex(),     // fromAddress = 后端钱包
 			employeeAddress,          // toAddress = 员工
@@ -266,7 +260,7 @@ func (s *PayrollService) ExecutePayout(
 			return nil, fmt.Errorf("composer quote failed: %w", err)
 		}
 
-		// 步骤 3: 签名并提交交易
+		// 步骤 2: 签名并提交交易
 		toAddr := common.HexToAddress(to)
 		txData, _ := hex.DecodeString(strings.TrimPrefix(txDataHex, "0x"))
 		txValue := new(big.Int)

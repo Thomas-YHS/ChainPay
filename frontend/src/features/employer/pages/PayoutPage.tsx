@@ -23,6 +23,10 @@ export default function PayoutPage() {
 
   useEffect(() => { load() }, [load])
 
+  // 发薪流程（Pure Composer）：
+  //  1. 后端读取员工配置的接收规则
+  //  2. 后端调用 LiFi API 获取跨链路由报价
+  //  3. 后端钱包签名并广播交易（LiFi 自动完成 USDC 授权 + 跨链兑换 + 发送）
   async function handlePayout() {
     if (!selected) return
     setState('executing')
