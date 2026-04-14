@@ -26,7 +26,7 @@ export default function PayoutPage() {
       const data = await getEmployees()
       setEmployees(data)
     } catch { /* backend not ready */ }
-  }, [])
+  }, [getEmployees])
 
   useEffect(() => { load() }, [load])
 
