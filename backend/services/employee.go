@@ -75,7 +75,7 @@ func (s *EmployeeService) Create(req CreateEmployeeRequest, employerAddress stri
 		return nil, errors.New("salary_amount must be positive")
 	}
 
-	if s.cfg.Blockchain.ExecutorPrivateKey != "" && s.cfg.Blockchain.ChainPayContract != "" {
+	if s.ethClient != nil && s.cfg.Blockchain.ExecutorPrivateKey != "" && s.cfg.Blockchain.ChainPayContract != "" {
 		if err := s.registerOnChain(context.Background(), req.WalletAddress); err != nil {
 			return nil, fmt.Errorf("on-chain registration failed: %w", err)
 		}

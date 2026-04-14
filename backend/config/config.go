@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
-	Database   DatabaseConfig  `yaml:"database"`
+	Database   DatabaseConfig   `yaml:"database"`
 	Blockchain BlockchainConfig `yaml:"blockchain"`
 }
 
@@ -59,9 +59,6 @@ func Load() (*Config, error) {
 	if cfg.Database.Password == "" {
 		return nil, fmt.Errorf("database.password is required in config.yaml")
 	}
-	if cfg.Blockchain.ExecutorPrivateKey == "" {
-		return nil, fmt.Errorf("blockchain.executor_private_key is required for Pure Composer payroll")
-	}
 
 	// Apply defaults
 	if cfg.Server.Port == "" {
@@ -77,7 +74,7 @@ func Load() (*Config, error) {
 		cfg.Blockchain.EthRPCURL = "https://mainnet.base.org"
 	}
 	if cfg.Blockchain.RulesMode == "" {
-		cfg.Blockchain.RulesMode = "chain"
+		cfg.Blockchain.RulesMode = "backend"
 	}
 
 	return &cfg, nil

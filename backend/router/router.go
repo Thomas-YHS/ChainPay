@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.PayrollHandler, vaultHandler *handlers.VaultHandler, configHandler *handlers.ConfigHandler) *gin.Engine {
+func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.PayrollHandler, configHandler *handlers.ConfigHandler) *gin.Engine {
 	// L-1 fixed: use gin.New() instead of gin.Default() so we control middleware explicitly
 	r := gin.New()
 	r.Use(gin.Logger())            // request log
@@ -35,12 +35,10 @@ func Setup(employeeHandler *handlers.EmployeeHandler, payrollHandler *handlers.P
 		payroll.Use(middleware.WalletAuth())
 		{
 			payroll.POST("/execute", payrollHandler.Execute)
+			payroll.POST("/:id/confirm", payrollHandler.Confirm)
 			payroll.GET("/logs", payrollHandler.ListLogs)
 			payroll.GET("/logs/:id", payrollHandler.GetLog)
 		}
-
-		// Vault discovery (no wallet auth required — read-only)
-		api.GET("/vaults", vaultHandler.List)
 
 		// Config (no auth)
 		api.GET("/config/rules-mode", configHandler.GetRulesMode)

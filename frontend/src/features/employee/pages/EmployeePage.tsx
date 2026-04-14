@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { useBackend } from '../../shared/hooks/useBackend'
@@ -11,9 +12,15 @@ import type { Employee } from '../../../store'
 type EmployeeState = 'connecting' | 'checking' | 'not-found' | 'setup' | 'done'
 
 export default function EmployeePage() {
+  const navigate = useNavigate()
   const { address, isConnected } = useAccount()
   const { openConnectModal } = useConnectModal()
   const { getEmployeeByWallet, getRulesMode } = useBackend()
+
+  // 断开连接时跳转到首页
+  useEffect(() => {
+    if (!isConnected) navigate('/')
+  }, [isConnected, navigate])
 
   const [state, setState] = useState<EmployeeState>('connecting')
   const [employee, setEmployee] = useState<Employee | null>(null)

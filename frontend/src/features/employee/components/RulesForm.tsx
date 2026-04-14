@@ -113,13 +113,14 @@ export default function RulesForm({ onSaved }: Props) {
               <div className="flex gap-2">
                 <select
                   style={selectStyle}
-                  value={rule.chainId}
+                  value={String(rule.chainId)}
                   onChange={e => {
-                    updateRule(i, 'chainId', Number(e.target.value))
-                    updateRule(i, 'tokenAddress', '0x0000000000000000000000000000000000000000')
+                    const updated = [...rules]
+                    updated[i] = { ...updated[i], chainId: Number(e.target.value), tokenAddress: '0x0000000000000000000000000000000000000000' }
+                    setRulesState(updated)
                   }}
                 >
-                  {SUPPORTED_CHAINS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  {SUPPORTED_CHAINS.map(c => <option key={c.id} value={String(c.id)}>{c.label}</option>)}
                 </select>
                 <select style={selectStyle} value={rule.tokenAddress} onChange={e => updateRule(i, 'tokenAddress', e.target.value)}>
                   {tokens.map(t => <option key={t.symbol} value={t.address}>{t.symbol}</option>)}

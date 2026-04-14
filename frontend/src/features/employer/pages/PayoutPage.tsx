@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useAccount, useSendTransaction } from 'wagmi'
 import { useBackend } from '../../shared/hooks/useBackend'
 import TxLink from '../../shared/components/TxLink'
 import type { Employee } from '../../../store'
@@ -6,12 +7,17 @@ import { PAY_FREQUENCY_LABELS } from '../../../theme'
 
 type PayoutState = 'idle' | 'executing' | 'success' | 'error'
 
+const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const BASE_CHAIN_ID = 8453
+
 export default function PayoutPage() {
-  const { getEmployees, triggerPayout } = useBackend()
+  const { address } = useAccount()
+  const { getEmployees, triggerPayout, confirmPayout } = useBackend()
+  const { sendTransactionAsync } = useSendTransaction()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selected, setSelected] = useState<Employee | null>(null)
   const [state, setState] = useState<PayoutState>('idle')
-  const [txHash, setTxHash] = useState<string | undefined>()
+  const [txHashes, setTxHashes] = useState<string[]>([])
   const [errorMsg, setErrorMsg] = useState<string | undefined>()
 
   const load = useCallback(async () => {
@@ -23,18 +29,48 @@ export default function PayoutPage() {
 
   useEffect(() => { load() }, [load])
 
-  // 发薪流程（Pure Composer）：
-  //  1. 后端读取员工配置的接收规则
-  //  2. 后端调用 LiFi API 获取跨链路由报价
-  //  3. 后端钱包签名并广播交易（LiFi 自动完成 USDC 授权 + 跨链兑换 + 发送）
+  // 发薪流程（雇主钱包直发）：
+  //  1. 前端调后端获取员工分账规则
+  //  2. 前端直接调 LiFi API 获取跨链路由报价（fromAddress = 雇主钱包）
+  //  3. wagmi sendTransaction 让雇主签名广播交易（LiFi 自动完成 USDC 授权 + 跨链兑换 + 发送）
+  //  4. 前端通知后端记录 tx_hash
   async function handlePayout() {
-    if (!selected) return
+    if (!selected || !address) return
     setState('executing')
-    setTxHash(undefined)
+    setTxHashes([])
     setErrorMsg(undefined)
     try {
-      const result = await triggerPayout(selected.wallet_address)
-      setTxHash(result.tx_hash)
+      // 步骤 1: 获取规则
+      const { log_id, rules } = await triggerPayout(selected.wallet_address)
+
+      const hashes: string[] = []
+      // 步骤 2-3: 对每条规则分别调用 LiFi + 雇主签名广播
+      for (const rule of rules) {
+        const salaryUsdc = parseFloat(selected.salary_amount)
+        const ruleAmount = Math.floor(salaryUsdc * parseInt(rule.percentage) / 10000 * 1e6)
+
+        // 调用 LiFi API 获取 quote
+        const lifiRes = await fetch(
+          `https://li.quest/v1/quote?fromChain=${BASE_CHAIN_ID}&toChain=${parseInt(rule.chainId)}&fromToken=${USDC_BASE}&toToken=${rule.tokenAddress}&fromAddress=${address}&toAddress=${selected.wallet_address}&fromAmount=${ruleAmount}`
+        )
+        if (!lifiRes.ok) throw new Error(`LiFi API error: ${lifiRes.status}`)
+        const lifiData = await lifiRes.json()
+        const txReq = lifiData.transactionRequest
+
+        // wagmi 让雇主钱包签名广播
+        const txHash = await sendTransactionAsync({
+          to: txReq.to,
+          data: txReq.data,
+          value: BigInt(txReq.value || '0'),
+          gasLimit: BigInt(txReq.gasLimit || '500000'),
+        })
+        hashes.push(txHash)
+
+        // 步骤 4: 通知后端记录 tx_hash
+        await confirmPayout(log_id, txHash)
+      }
+
+      setTxHashes(hashes)
       setState('success')
     } catch (e: any) {
       setErrorMsg(e.message ?? '发薪失败')
@@ -44,7 +80,7 @@ export default function PayoutPage() {
 
   function reset() {
     setState('idle')
-    setTxHash(undefined)
+    setTxHashes([])
     setErrorMsg(undefined)
   }
 
@@ -103,7 +139,7 @@ export default function PayoutPage() {
 
           {state === 'executing' && (
             <div className="w-full py-2.5 rounded-lg text-sm text-center" style={{ background: '#4b5563', color: '#fff' }}>
-              发薪中，等待后端签名广播...
+              发薪中，请在钱包中确认签名...
             </div>
           )}
 
@@ -111,14 +147,14 @@ export default function PayoutPage() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm" style={{ color: '#10b981' }}>
                 <span>✅ 发薪已提交</span>
-                <span style={{ color: '#94a3b8' }}>· 后端正在等待链上确认</span>
+                <span style={{ color: '#94a3b8' }}>· LiFi 正在路由中</span>
               </div>
-              {txHash && (
-                <div className="p-3 rounded-lg text-sm" style={{ background: '#1a1f35', border: '1px solid #2d3155' }}>
-                  <span style={{ color: '#94a3b8' }}>交易哈希：</span>
-                  <TxLink hash={txHash} />
+              {txHashes.map((hash, i) => (
+                <div key={i} className="p-3 rounded-lg text-sm" style={{ background: '#1a1f35', border: '1px solid #2d3155' }}>
+                  <span style={{ color: '#94a3b8' }}>交易 {i + 1}：</span>
+                  <TxLink hash={hash} />
                 </div>
-              )}
+              ))}
               <button
                 onClick={reset}
                 className="w-full py-2 rounded-lg text-sm"

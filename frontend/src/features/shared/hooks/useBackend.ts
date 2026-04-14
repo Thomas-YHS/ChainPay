@@ -81,7 +81,7 @@ export function useBackend() {
     return json.data
   }
 
-  async function triggerPayout(employeeWallet: string): Promise<{ tx_hash: string; status: string; log_id: number }> {
+  async function triggerPayout(employeeWallet: string): Promise<{ log_id: number; rules: { chainId: string; tokenAddress: string; percentage: string }[] }> {
     const res = await fetch(`${API_URL}/payroll/execute`, {
       method: 'POST',
       headers: headers(),
@@ -90,6 +90,16 @@ export function useBackend() {
     const json = await res.json()
     if (json.code !== 200) throw new Error(json.message)
     return json.data
+  }
+
+  async function confirmPayout(logId: number, txHash: string): Promise<void> {
+    const res = await fetch(`${API_URL}/payroll/${logId}/confirm`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ tx_hash: txHash }),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
   }
 
   async function getRulesMode(): Promise<'chain' | 'backend'> {
@@ -109,5 +119,5 @@ export function useBackend() {
     if (json.code !== 200) throw new Error(json.message)
   }
 
-  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest, triggerPayout, getRulesMode, saveRules }
+  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest, triggerPayout, confirmPayout, getRulesMode, saveRules }
 }

@@ -61,9 +61,13 @@ func runScheduledPayroll(employeeSvc *EmployeeService, payrollSvc *PayrollServic
 			continue
 		}
 
-		result, err := payrollSvc.ExecutePayout(emp.EmployerAddress, emp.WalletAddress, salary, "cron")
+		_, result, err := payrollSvc.ExecutePayout(emp.EmployerAddress, emp.WalletAddress, salary, "cron")
 		if err != nil {
 			log.Printf("Cron: payout failed for %s: %v", emp.WalletAddress, err)
+			continue
+		}
+		if result == nil {
+			log.Printf("Cron: no log created for %s", emp.WalletAddress)
 			continue
 		}
 
@@ -75,11 +79,11 @@ func runScheduledPayroll(employeeSvc *EmployeeService, payrollSvc *PayrollServic
 			Where("wallet_address = ?", emp.WalletAddress).
 			Update("next_pay_date", nextDate)
 		if res.Error != nil {
-			log.Printf("Cron: failed to update next_pay_date for %s (tx=%s): %v",
-				emp.WalletAddress, result.TxHash, res.Error)
+			log.Printf("Cron: failed to update next_pay_date for %s (log_id=%d): %v",
+				emp.WalletAddress, result.ID, res.Error)
 		} else {
-			log.Printf("Cron: payout broadcast OK for %s (tx=%s, log_id=%d)",
-				emp.WalletAddress, result.TxHash, result.ID)
+			log.Printf("Cron: payout prepared for %s (log_id=%d)",
+				emp.WalletAddress, result.ID)
 		}
 	}
 }

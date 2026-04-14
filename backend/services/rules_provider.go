@@ -28,13 +28,15 @@ type ChainRulesProvider struct {
 	ethClient *ethclient.Client
 }
 
+// NewChainRulesProvider creates a ChainRulesProvider.
+// ethClient may be nil in employer-direct mode; GetRules will return an error in that case.
 func NewChainRulesProvider(cfg *config.Config, ethClient *ethclient.Client) *ChainRulesProvider {
 	return &ChainRulesProvider{cfg: cfg, ethClient: ethClient}
 }
 
 // GetRules 从链上合约读取员工规则。
 func (p *ChainRulesProvider) GetRules(employeeAddress string) ([]Rule, error) {
-	if p.cfg.Blockchain.ChainPayContract == "" {
+	if p.cfg == nil || p.cfg.Blockchain.ChainPayContract == "" {
 		return nil, errors.New("contract address not configured")
 	}
 	if p.ethClient == nil {
