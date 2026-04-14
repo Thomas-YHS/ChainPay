@@ -96,6 +96,15 @@ export default function EmployeePage() {
         {state === 'done' && (
           <>
             <RulesDone txHash={savedTxHash} mode={rulesMode} />
+            <div className="mt-4 px-4 max-w-md mx-auto">
+              <button
+                onClick={() => navigate('/employee/earn')}
+                className="w-full py-3 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: '#1e2030', border: '1px solid #10b981', color: '#10b981' }}
+              >
+                📈 Earn 收益 — 存入 vault 赚取利息
+              </button>
+            </div>
             <div className="mt-6">
               <button
                 onClick={() => setShowAutoInvest(true)}
