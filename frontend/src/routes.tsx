@@ -6,6 +6,7 @@ import EmployeesPage from './features/employer/pages/EmployeesPage'
 import PayoutPage from './features/employer/pages/PayoutPage'
 import HistoryPage from './features/employer/pages/HistoryPage'
 import EmployeePage from './features/employee/pages/EmployeePage'
+import EarnDashboard from './features/employee/pages/EarnDashboard'
 
 export const routes: RouteObject[] = [
   { path: '/', element: <LandingPage /> },
@@ -19,5 +20,11 @@ export const routes: RouteObject[] = [
       { path: 'history', element: <HistoryPage /> },
     ],
   },
-  { path: '/employee', element: <EmployeePage /> },
+  {
+    path: '/employee',
+    children: [
+      { index: true, element: <EmployeePage /> },
+      { path: 'earn', element: <EarnDashboard /> },
+    ],
+  },
 ]
