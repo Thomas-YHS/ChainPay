@@ -49,3 +49,5 @@ export const PAY_FREQUENCY_LABELS: Record<string, string> = {
   weekly: '每周',
   monthly: '每月',
 }
+
+export const LIFI_API_KEY = (import.meta.env.VITE_LIFI_API_KEY as string) ?? ''
