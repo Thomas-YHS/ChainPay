@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useSendTransaction } from 'wagmi'
+import { parseUnits } from 'viem'
 import { useEnsureAllowance } from '../../shared/hooks/useEnsureAllowance'
 import TopNav from '../../shared/components/TopNav'
 import TxLink from '../../shared/components/TxLink'
@@ -92,6 +93,7 @@ export default function EarnDashboard() {
   useEffect(() => { loadVaults() }, [])
 
   function selectVault(id: string) {
+    if (depositState !== 'idle') return
     if (selectedId === id) {
       setSelectedId(null)
       return
@@ -109,7 +111,7 @@ export default function EarnDashboard() {
     setDepositError(null)
     setDepositTxHash(null)
     try {
-      const amountRaw = BigInt(Math.floor(parseFloat(amount) * 1e6))
+      const amountRaw = parseUnits(amount, 6)
       const usdcAddress = (SUPPORTED_TOKENS[vault.chainId]?.find(t => t.symbol === 'USDC')?.address ?? USDC_BASE) as `0x${string}`
 
       await ensureAllowance(usdcAddress, LIFI_DIAMOND_BASE as `0x${string}`, amountRaw)
@@ -127,6 +129,9 @@ export default function EarnDashboard() {
       const res = await fetch(`https://li.quest/v1/quote?${params}`)
       if (!res.ok) throw new Error(`LiFi quote error: ${res.status}`)
       const lifiData = await res.json()
+      if (!lifiData.transactionRequest) {
+        throw new Error(lifiData.message ?? 'Li.Fi 返回数据异常，无法获取交易参数')
+      }
       const txReq = lifiData.transactionRequest
 
       setDepositState('depositing')
