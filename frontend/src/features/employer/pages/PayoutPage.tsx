@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useSendTransaction } from 'wagmi'
 import { useBackend } from '../../shared/hooks/useBackend'
+import { useEnsureAllowance } from '../../shared/hooks/useEnsureAllowance'
 import TxLink from '../../shared/components/TxLink'
 import type { Employee } from '../../../store'
-import { PAY_FREQUENCY_LABELS } from '../../../theme'
+import { PAY_FREQUENCY_LABELS, USDC_BASE } from '../../../theme'
 
 type PayoutState = 'idle' | 'executing' | 'success' | 'error'
 
-const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const BASE_CHAIN_ID = 8453
 
 export default function PayoutPage() {
   const { address } = useAccount()
   const { getEmployees, triggerPayout, confirmPayout } = useBackend()
   const { sendTransactionAsync } = useSendTransaction()
+  const { ensureAllowance } = useEnsureAllowance()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selected, setSelected] = useState<Employee | null>(null)
   const [state, setState] = useState<PayoutState>('idle')
@@ -57,12 +58,24 @@ export default function PayoutPage() {
         const lifiData = await lifiRes.json()
         const txReq = lifiData.transactionRequest
 
-        // wagmi 让雇主钱包签名广播
+        // 步骤 2.5: 确保 Li.Fi 有足够 USDC 授权额度（用 quote 返回的精确金额和 token 地址）
+        if (lifiData.estimate?.approvalAddress) {
+          await ensureAllowance(
+            USDC_BASE as `0x${string}`,
+            lifiData.estimate.approvalAddress as `0x${string}`,
+            BigInt(lifiData.action.fromAmount)
+          )
+        }
+
+        // wagmi 让雇主钱包签名广播（完整透传 transactionRequest，保留 Li.Fi 的 gas 定价）
         const txHash = await sendTransactionAsync({
           to: txReq.to,
           data: txReq.data,
           value: BigInt(txReq.value || '0'),
-          gasLimit: BigInt(txReq.gasLimit || '500000'),
+          gas: txReq.gasLimit ? BigInt(txReq.gasLimit) : undefined,
+          gasPrice: txReq.gasPrice ? BigInt(txReq.gasPrice) : undefined,
+          maxFeePerGas: txReq.maxFeePerGas ? BigInt(txReq.maxFeePerGas) : undefined,
+          maxPriorityFeePerGas: txReq.maxPriorityFeePerGas ? BigInt(txReq.maxPriorityFeePerGas) : undefined,
         })
         hashes.push(txHash)
 
