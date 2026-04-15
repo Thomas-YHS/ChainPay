@@ -1,1 +1,165 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500&family=JetBrains+Mono:wght@400&display=swap');
 @import "tailwindcss";
+
+:root {
+	color-scheme: light;
+
+	--cp-brand-primary: 99 102 241;
+	--cp-brand-hover: 79 70 229;
+	--cp-brand-active: 67 56 202;
+
+	--cp-text-primary: 2 8 23;
+	--cp-text-secondary: 100 116 139;
+	--cp-text-muted: 154 154 154;
+	--cp-text-inverse: 255 255 255;
+
+	--cp-surface-canvas: 248 250 255;
+	--cp-surface-card: 255 255 255;
+	--cp-surface-soft: 243 243 243;
+	--cp-surface-separator: 233 233 233;
+	--cp-surface-overlay: 0 0 0;
+
+	--cp-border-default: 226 232 240;
+	--cp-border-subtle: 208 208 208;
+	--cp-border-interactive: 99 102 241;
+	--cp-border-interactive-strong: 99 102 241;
+
+	--cp-status-success: 0 136 71;
+	--cp-status-error: 223 74 52;
+	--cp-status-warning: 255 184 0;
+	--cp-status-warning-alt: 243 161 63;
+	--cp-status-info: 9 136 240;
+
+	--cp-accent-telegram: 0 136 204;
+	--cp-accent-champagne: 199 185 148;
+	--cp-accent-destructive: 255 87 59;
+
+	--cp-grid-dot: 226 232 240;
+
+	--cp-shadow-sm: rgba(99, 102, 241, 0.1) 0 8px 32px 0;
+	--cp-shadow-md: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.1) 0 4px 6px -4px;
+	--cp-shadow-lg: rgba(99, 102, 241, 0.18) 0 4px 24px 0, rgba(0, 0, 0, 0.06) 0 1px 3px 0;
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+
+	--cp-text-primary: 248 250 255;
+	--cp-text-secondary: 148 163 184;
+	--cp-text-muted: 148 163 184;
+	--cp-text-inverse: 255 255 255;
+
+	--cp-surface-canvas: 15 17 23;
+	--cp-surface-card: 30 32 48;
+	--cp-surface-soft: 37 40 64;
+	--cp-surface-separator: 37 40 64;
+	--cp-surface-overlay: 2 8 23;
+
+	--cp-border-default: 45 49 85;
+	--cp-border-subtle: 75 85 99;
+	--cp-border-interactive: 129 140 248;
+	--cp-border-interactive-strong: 99 102 241;
+
+	--cp-status-success: 52 211 153;
+	--cp-status-error: 248 113 113;
+	--cp-status-warning: 250 204 21;
+	--cp-status-warning-alt: 245 158 11;
+	--cp-status-info: 96 165 250;
+
+	--cp-accent-telegram: 56 189 248;
+	--cp-accent-champagne: 226 211 181;
+	--cp-accent-destructive: 251 113 133;
+
+	--cp-grid-dot: 255 255 255;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	min-height: 100%;
+}
+
+body {
+	margin: 0;
+	font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	font-weight: 300;
+	color: rgb(var(--cp-text-primary));
+	background-color: rgb(var(--cp-surface-canvas));
+	background-image: radial-gradient(circle, rgb(var(--cp-grid-dot) / 0.55) 1px, transparent 1px);
+	background-size: 24px 24px;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+}
+
+button,
+[role='button'],
+input,
+select,
+textarea {
+	min-height: 44px;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+	outline: 0;
+	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+::placeholder {
+	color: rgb(var(--cp-text-muted));
+}
+
+.cp-shell {
+	min-height: 100vh;
+	background-color: rgb(var(--cp-surface-canvas));
+	background-image: radial-gradient(circle, rgb(var(--cp-grid-dot) / 0.55) 1px, transparent 1px);
+	background-size: 24px 24px;
+}
+
+.cp-card {
+	background: rgb(var(--cp-surface-card));
+	border: 1px solid rgb(var(--cp-border-default));
+	border-radius: 16px;
+	box-shadow: var(--cp-shadow-lg);
+}
+
+.cp-nav {
+	background: rgba(255, 255, 255, 0.95);
+	border-bottom-color: rgb(var(--cp-border-default));
+}
+
+:root[data-theme='dark'] .cp-nav {
+	background: rgba(15, 17, 23, 0.84);
+}
+
+:root[data-theme='dark'] .cp-card {
+	box-shadow: rgba(2, 8, 23, 0.45) 0 12px 28px -8px, rgba(99, 102, 241, 0.16) 0 2px 12px 0;
+}
+
+.cp-text-meta {
+	color: rgb(var(--cp-text-secondary));
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.cp-text-code {
+	font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+	font-size: 12px;
+	line-height: 16px;
+	letter-spacing: 0.04em;
+}

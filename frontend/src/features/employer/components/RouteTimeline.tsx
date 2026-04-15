@@ -1,5 +1,6 @@
 import type { Employee, RouteStep } from '../../../store'
 import TxLink from '../../shared/components/TxLink'
+import { colors } from '../../../styles/tokens'
 
 interface Props {
   steps: RouteStep[]
@@ -8,29 +9,46 @@ interface Props {
 
 export default function RouteTimeline({ steps, employee: _employee }: Props) {
   if (steps.length === 0) {
-    return <p style={{ color: '#94a3b8' }}>准备路由中...</p>
+    return <p className="cp-text-meta">准备路由中...</p>
   }
 
   return (
-    <div className="max-w-lg">
+    <div className="cp-card max-w-[780px] rounded-xl p-5 md:p-6">
       <div className="relative pl-5">
-        <div className="absolute left-2 top-2 bottom-2 w-px" style={{ background: '#2d3155' }} />
+        <div className="absolute bottom-2 left-2 top-2 w-px bg-border" />
         {steps.map((step, i) => (
           <div key={i} className="relative mb-5 last:mb-0">
             <div
-              className="absolute -left-3.5 top-1 w-3 h-3 rounded-full"
+              className="absolute -left-3.5 top-1 h-3 w-3 rounded-full"
               style={{
-                background: step.status === 'completed' ? '#10b981' : step.status === 'processing' ? '#f59e0b' : '#2d3155',
-                border: step.status === 'pending' ? '1px solid #4b5563' : 'none',
+                background:
+                  step.status === 'completed'
+                    ? colors.status.success
+                    : step.status === 'processing'
+                    ? colors.status.warning
+                    : step.status === 'failed'
+                    ? colors.status.error
+                    : colors.border.default,
+                border: step.status === 'pending' ? `1px solid ${colors.border.subtle}` : 'none',
               }}
             />
             <div
-              className="text-sm font-semibold"
-              style={{ color: step.status === 'pending' ? '#4b5563' : '#fff' }}
+              className="text-body-sm font-medium"
+              style={{ color: step.status === 'pending' ? colors.text.secondary : colors.text.primary }}
             >
               {step.label}
             </div>
-            <div className="text-xs mt-0.5" style={{ color: step.status === 'processing' ? '#f59e0b' : '#94a3b8' }}>
+            <div
+              className="mt-0.5 text-caption font-medium"
+              style={{
+                color:
+                  step.status === 'processing'
+                    ? colors.status.warning
+                    : step.status === 'failed'
+                    ? colors.status.error
+                    : colors.text.secondary,
+              }}
+            >
               {step.description}
               {step.txHash && <span className="ml-2"><TxLink hash={step.txHash} /></span>}
             </div>

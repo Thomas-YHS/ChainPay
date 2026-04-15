@@ -32,33 +32,32 @@ export default function ApproveCard({ totalAmountUsdc }: Props) {
   }
 
   return (
-    <div className="rounded-xl p-4 mb-5" style={{ background: '#1e2030', border: '1px solid #2d3155' }}>
-      <div className="flex items-center mb-2">
-        <span className="text-white font-semibold text-sm">USDC Approve</span>
+    <div className="cp-card mb-5 rounded-xl p-4">
+      <div className="mb-2 flex items-center">
+        <span className="text-h4 font-medium text-text-primary">USDC Approve</span>
         {isApproved ? (
-          <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: '#10b98120', color: '#10b981' }}>
+          <span className="ml-auto rounded-full bg-status-success/10 px-2 py-0.5 text-caption font-medium text-status-success">
             已授权 ${formatUnits(current, 6)}
           </span>
         ) : (
-          <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: '#ef444420', color: '#ef4444' }}>
+          <span className="ml-auto rounded-full bg-status-error/10 px-2 py-0.5 text-caption font-medium text-status-error">
             未授权
           </span>
         )}
       </div>
-      <p className="text-xs mb-3" style={{ color: '#94a3b8' }}>
-        本次发薪总额：<span className="text-white font-mono">${totalAmountUsdc} USDC</span>
+      <p className="mb-3 text-body-sm font-light text-text-secondary">
+        本次发薪总额：<span className="cp-text-code text-text-primary">${totalAmountUsdc} USDC</span>
       </p>
       {!isApproved && (
         <>
           <button
             onClick={handleApprove}
             disabled={loading}
-            className="w-full py-2 rounded-lg text-sm font-semibold"
-            style={{ background: loading ? '#4b5563' : '#6366f1', color: '#fff' }}
+            className="min-h-touch w-full rounded-lg bg-brand-primary px-4 py-2 text-button-sm font-light text-text-inverse shadow-sm transition-colors duration-normal ease-standard hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? '授权中...' : `Approve $${totalAmountUsdc} USDC`}
           </button>
-          {error && <p className="text-xs mt-2" style={{ color: '#ef4444' }}>{error}</p>}
+          {error && <p className="mt-2 text-caption font-medium text-status-error">{error}</p>}
         </>
       )}
     </div>

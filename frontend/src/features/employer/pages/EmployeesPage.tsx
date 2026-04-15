@@ -27,25 +27,29 @@ export default function EmployeesPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div>
-      <div className="flex items-center mb-6">
-        <h1 className="text-white text-xl font-bold">员工列表</h1>
+    <div className="max-w-content">
+      <div className="mb-6 flex items-center gap-3">
+        <h1 className="text-h2 font-medium text-text-primary">员工列表</h1>
         <button
           onClick={() => setShowModal(true)}
-          className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style={{ background: '#6366f1' }}
+          className="ml-auto min-h-touch rounded-lg bg-brand-primary px-4 py-2 text-button-sm font-light text-text-inverse shadow-sm transition-colors duration-normal ease-standard hover:bg-brand-hover"
         >
           + 添加员工
         </button>
       </div>
 
-      {loading && <p style={{ color: '#94a3b8' }}>加载中...</p>}
-      {error && <p style={{ color: '#ef4444' }}>{error}</p>}
+      {loading && <p className="cp-text-meta">加载中...</p>}
+      {error && <p className="text-body-sm font-light text-status-error">{error}</p>}
 
       {!loading && !error && (
-        <div className="rounded-xl overflow-hidden" style={{ background: '#1e2030', border: '1px solid #2d3155' }}>
+        <div className="cp-card overflow-hidden rounded-xl">
+          <div className="flex items-center border-b border-border bg-surface-canvas px-4 py-3 text-h4 font-medium text-text-secondary">
+            <span className="flex-1">员工信息</span>
+            <span className="hidden w-[200px] md:block">钱包地址</span>
+            <span className="w-[84px] text-left">规则</span>
+          </div>
           {employees.length === 0 ? (
-            <div className="py-12 text-center" style={{ color: '#94a3b8' }}>
+            <div className="py-16 text-center text-body-sm font-light text-text-secondary">
               还没有员工，点击「添加员工」开始
             </div>
           ) : (

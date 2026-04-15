@@ -8,6 +8,7 @@ import ApproveCard from '../components/ApproveCard'
 import RouteTimeline from '../components/RouteTimeline'
 import type { Employee, RouteStepStatus } from '../../../store'
 import { PAY_FREQUENCY_LABELS, USDC_BASE } from '../../../theme'
+import { colors } from '../../../styles/tokens'
 
 type Step = 'select' | 'executing'
 
@@ -30,15 +31,14 @@ export default function PayoutPage() {
 
   if (step === 'executing') {
     return (
-      <div>
-        <div className="flex items-center mb-6">
-          <h1 className="text-white text-xl font-bold">
+      <div className="max-w-content">
+        <div className="mb-6 flex items-center gap-3">
+          <h1 className="text-h2 font-medium text-text-primary">
             发薪执行中 · {selectedEmployee?.name}
           </h1>
           <button
             onClick={() => { setStep('select'); setSelectedEmployee(null) }}
-            className="ml-auto text-sm"
-            style={{ color: '#94a3b8' }}
+            className="ml-auto min-h-touch rounded-lg border border-border-interactive bg-surface-card px-3 py-2 text-body-sm font-light text-text-secondary transition-colors duration-normal ease-standard hover:border-border-interactive-strong"
           >
             ← 返回
           </button>
@@ -49,13 +49,13 @@ export default function PayoutPage() {
   }
 
   return (
-    <div className="max-w-lg">
-      <h1 className="text-white text-xl font-bold mb-6">发薪</h1>
+    <div className="max-w-content">
+      <h1 className="mb-6 text-h2 font-medium text-text-primary">发薪</h1>
 
       <ApproveCard totalAmountUsdc={totalAmount} />
 
-      <h2 className="text-sm font-semibold mb-3" style={{ color: '#94a3b8' }}>选择员工</h2>
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <h2 className="mb-3 text-h4 font-medium text-text-secondary">选择员工</h2>
+      <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-2">
         {employees.map((emp) => {
           const disabled = !emp.has_rules
           const selected = selectedEmployee?.id === emp.id
@@ -64,17 +64,17 @@ export default function PayoutPage() {
               key={emp.id}
               disabled={disabled}
               onClick={() => setSelectedEmployee(selected ? null : emp)}
-              className="rounded-xl p-4 text-left transition-all"
+              className="min-h-touch rounded-xl border p-4 text-left shadow-xs transition-all duration-normal ease-standard"
               style={{
-                background: selected ? '#1e2030' : '#1a1f35',
-                border: selected ? '1px solid #6366f1' : '1px solid #2d3155',
-                opacity: disabled ? 0.4 : 1,
+                background: selected ? 'rgba(99, 102, 241, 0.08)' : colors.surface.card,
+                border: selected ? '1px solid rgba(99, 102, 241, 0.45)' : `1px solid ${colors.border.default}`,
+                opacity: disabled ? 0.55 : 1,
                 cursor: disabled ? 'not-allowed' : 'pointer',
               }}
             >
-              <div className="text-white text-sm font-semibold">{emp.name}</div>
-              <div className="text-xs mt-1" style={{ color: '#6366f1' }}>${emp.salary_amount} USDC</div>
-              <div className="text-xs mt-1" style={{ color: disabled ? '#f59e0b' : '#94a3b8' }}>
+              <div className="text-body-sm font-medium text-text-primary">{emp.name}</div>
+              <div className="mt-1 text-caption font-medium text-brand-primary">${emp.salary_amount} USDC</div>
+              <div className="mt-1 text-caption font-medium" style={{ color: disabled ? colors.status.warning : colors.text.secondary }}>
                 {disabled ? '待设置规则' : PAY_FREQUENCY_LABELS[emp.pay_frequency]}
               </div>
             </button>
@@ -83,7 +83,7 @@ export default function PayoutPage() {
       </div>
 
       {employees.length === 0 && (
-        <p className="text-sm mb-6" style={{ color: '#94a3b8' }}>暂无员工，请先在员工管理页添加员工</p>
+        <p className="mb-6 text-body-sm font-light text-text-secondary">暂无员工，请先在员工管理页添加员工</p>
       )}
 
       <RoutePreviewSection
@@ -174,36 +174,34 @@ function RoutePreviewSection({ employee, onExecuting }: { employee: Employee | n
   }
 
   return (
-    <div className="mt-4 p-4 rounded-xl" style={{ background: '#1e2030', border: '1px solid #2d3155' }}>
-      <p className="text-sm text-white mb-3">已选：{employee.name} · ${employee.salary_amount} USDC</p>
+    <div className="cp-card mt-4 rounded-xl p-4">
+      <p className="mb-3 text-body-sm font-medium text-text-primary">已选：{employee.name} · ${employee.salary_amount} USDC</p>
 
       {lifiRoutes.length === 0 ? (
         <>
           <button
             onClick={fetchRoutes}
             disabled={loadingRoutes}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold"
-            style={{ background: loadingRoutes ? '#4b5563' : '#6366f1', color: '#fff' }}
+            className="min-h-touch w-full rounded-lg bg-brand-primary px-4 py-2.5 text-button-sm font-light text-text-inverse shadow-sm transition-colors duration-normal ease-standard hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loadingRoutes ? '获取路由中...' : '生成路由预览 →'}
           </button>
-          {routeError && <p className="text-xs mt-2" style={{ color: '#ef4444' }}>{routeError}</p>}
+          {routeError && <p className="mt-2 text-caption font-medium text-status-error">{routeError}</p>}
         </>
       ) : (
         <>
-          <div className="mb-3 p-3 rounded-lg" style={{ background: '#252840' }}>
+          <div className="mb-3 rounded-lg border border-border bg-surface-canvas p-3">
             {lifiRoutes[0].steps.map((s, i) => (
-              <div key={i} className="flex justify-between text-xs py-1">
-                <span style={{ color: '#94a3b8' }}>{s.toolDetails?.name ?? s.tool}</span>
-                <span style={{ color: '#6366f1' }}>≈ ${s.estimate?.toAmountUSD ?? '—'}</span>
+              <div key={i} className="flex justify-between py-1 text-caption">
+                <span className="font-medium text-text-secondary">{s.toolDetails?.name ?? s.tool}</span>
+                <span className="font-medium text-brand-primary">≈ ${s.estimate?.toAmountUSD ?? '—'}</span>
               </div>
             ))}
           </div>
           <button
             onClick={handleExecute}
             disabled={executing}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold"
-            style={{ background: executing ? '#4b5563' : '#6366f1', color: '#fff' }}
+            className="min-h-touch w-full rounded-lg bg-brand-primary px-4 py-2.5 text-button-sm font-light text-text-inverse shadow-sm transition-colors duration-normal ease-standard hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {executing ? '执行中...' : '确认发薪'}
           </button>

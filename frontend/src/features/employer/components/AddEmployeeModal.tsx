@@ -50,58 +50,79 @@ export default function AddEmployeeModal({ onClose, onAdded }: Props) {
     }
   }
 
-  const inputStyle = {
-    background: '#252840',
-    border: '1px solid #2d3155',
-    borderRadius: 6,
-    color: '#fff',
-    padding: '8px 12px',
-    fontSize: 13,
-    width: '100%',
-    outline: 'none',
-  }
-
-  const labelStyle = { color: '#94a3b8', fontSize: 11, marginBottom: 4, display: 'block' }
-
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 px-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-md rounded-xl p-6" style={{ background: '#1e2030', border: '1px solid #2d3155' }}>
-        <div className="flex items-center mb-5">
-          <h2 className="text-white font-bold">添加员工</h2>
-          <button onClick={onClose} className="ml-auto text-lg" style={{ color: '#4b5563' }}>✕</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/60 px-4 backdrop-blur-[2px]">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface-card p-6 shadow-md">
+        <div className="mb-5 flex items-center">
+          <h2 className="text-h2 font-medium text-text-primary">添加员工</h2>
+          <button onClick={onClose} className="ml-auto min-h-touch px-3 text-body font-light text-text-secondary transition-colors duration-normal ease-standard hover:text-brand-primary">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label style={labelStyle}>姓名 *</label>
-            <input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="张三" />
+            <label className="mb-1 block text-caption font-medium text-text-secondary">姓名 *</label>
+            <input
+              className="min-h-touch w-full rounded-lg border border-border px-3 py-2 text-body-sm font-light text-text-primary"
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+              placeholder="张三"
+            />
           </div>
           <div>
-            <label style={labelStyle}>昵称</label>
-            <input style={inputStyle} value={form.nickname} onChange={e => set('nickname', e.target.value)} placeholder="Alex（可选）" />
+            <label className="mb-1 block text-caption font-medium text-text-secondary">昵称</label>
+            <input
+              className="min-h-touch w-full rounded-lg border border-border px-3 py-2 text-body-sm font-light text-text-primary"
+              value={form.nickname}
+              onChange={e => set('nickname', e.target.value)}
+              placeholder="Alex（可选）"
+            />
           </div>
           <div>
-            <label style={labelStyle}>钱包地址 *</label>
-            <input style={inputStyle} value={form.wallet_address} onChange={e => set('wallet_address', e.target.value)} placeholder="0x..." className="font-mono" />
+            <label className="mb-1 block text-caption font-medium text-text-secondary">钱包地址 *</label>
+            <input
+              className="cp-text-code min-h-touch w-full rounded-lg border border-border px-3 py-2 text-text-primary"
+              value={form.wallet_address}
+              onChange={e => set('wallet_address', e.target.value)}
+              placeholder="0x..."
+            />
           </div>
           <div>
-            <label style={labelStyle}>合约金额（USDC）*</label>
-            <input style={inputStyle} type="number" min="1" value={form.salary_amount} onChange={e => set('salary_amount', e.target.value)} placeholder="2400" />
+            <label className="mb-1 block text-caption font-medium text-text-secondary">合约金额（USDC）*</label>
+            <input
+              className="min-h-touch w-full rounded-lg border border-border px-3 py-2 text-body-sm font-light text-text-primary"
+              type="number"
+              min="1"
+              value={form.salary_amount}
+              onChange={e => set('salary_amount', e.target.value)}
+              placeholder="2400"
+            />
           </div>
           <div>
-            <label style={labelStyle}>发薪频率 *</label>
-            <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.pay_frequency} onChange={e => set('pay_frequency', e.target.value)}>
+            <label className="mb-1 block text-caption font-medium text-text-secondary">发薪频率 *</label>
+            <select
+              className="min-h-touch w-full cursor-pointer rounded-lg border border-border-interactive bg-surface-card px-3 py-2 text-body-sm font-light text-text-primary shadow-sm"
+              value={form.pay_frequency}
+              onChange={e => set('pay_frequency', e.target.value)}
+            >
               {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
 
-          {error && <p className="text-sm" style={{ color: '#ef4444' }}>{error}</p>}
+          {error && <p className="text-body-sm font-light text-status-error">{error}</p>}
 
-          <div className="flex gap-3 mt-2">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-lg text-sm" style={{ background: '#252840', color: '#94a3b8', border: '1px solid #2d3155' }}>
+          <div className="mt-2 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-touch flex-1 rounded-lg border border-border-interactive bg-surface-card px-4 py-2.5 text-button-sm font-light text-text-secondary transition-colors duration-normal ease-standard hover:border-border-interactive-strong"
+            >
               取消
             </button>
-            <button type="submit" disabled={loading} className="flex-1 py-2.5 rounded-lg text-sm font-semibold" style={{ background: loading ? '#4b5563' : '#6366f1', color: '#fff' }}>
+            <button
+              type="submit"
+              disabled={loading}
+              className="min-h-touch flex-1 rounded-lg bg-brand-primary px-4 py-2.5 text-button-sm font-light text-text-inverse shadow-sm transition-colors duration-normal ease-standard hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {loading ? '添加中...' : '确认添加'}
             </button>
           </div>

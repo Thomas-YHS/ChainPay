@@ -42,18 +42,17 @@ export default function EmployeePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#0f1117' }}>
+    <div className="cp-shell flex min-h-screen flex-col">
       <TopNav />
-      <div className="flex-1">
+      <div className="mx-auto w-full max-w-[1100px] flex-1 px-4 py-6 md:px-8">
         {state === 'connecting' && (
-          <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
+          <div className="cp-card mx-auto flex max-w-[560px] flex-col items-center justify-center px-4 py-20 text-center">
             <div className="text-4xl mb-4">🔗</div>
-            <h2 className="text-white text-xl font-bold mb-2">连接钱包以继续</h2>
-            <p className="text-sm mb-6" style={{ color: '#94a3b8' }}>系统将自动验证你是否为已注册员工</p>
+            <h2 className="mb-2 text-h2 font-medium text-text-primary">连接钱包以继续</h2>
+            <p className="mb-6 text-body-sm font-light text-text-secondary">系统将自动验证你是否为已注册员工</p>
             <button
               onClick={() => openConnectModal?.()}
-              className="px-6 py-3 rounded-xl text-sm font-semibold"
-              style={{ background: '#6366f1', color: '#fff' }}
+              className="min-h-touch rounded-xl bg-brand-primary px-6 py-3 text-button-sm font-light text-text-inverse shadow-sm transition-colors duration-normal ease-standard hover:bg-brand-hover"
             >
               连接钱包
             </button>
@@ -61,19 +60,19 @@ export default function EmployeePage() {
         )}
 
         {state === 'checking' && (
-          <div className="flex items-center justify-center py-24">
-            <p style={{ color: '#94a3b8' }}>验证身份中...</p>
+          <div className="cp-card mx-auto flex max-w-[560px] items-center justify-center py-20">
+            <p className="text-body-sm font-light text-text-secondary">验证身份中...</p>
           </div>
         )}
 
         {state === 'not-found' && (
-          <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
+          <div className="cp-card mx-auto flex max-w-[560px] flex-col items-center justify-center px-4 py-20 text-center">
             <div className="text-4xl mb-4">🔍</div>
-            <h2 className="text-white text-xl font-bold mb-2">未找到你的档案</h2>
-            <p className="text-sm mb-4" style={{ color: '#94a3b8' }}>
-              钱包地址 <span className="font-mono" style={{ color: '#6366f1' }}>{address?.slice(0, 6)}...{address?.slice(-4)}</span> 尚未被添加到系统中
+            <h2 className="mb-2 text-h2 font-medium text-text-primary">未找到你的档案</h2>
+            <p className="mb-4 text-body-sm font-light text-text-secondary">
+              钱包地址 <span className="cp-text-code text-brand-primary">{address?.slice(0, 6)}...{address?.slice(-4)}</span> 尚未被添加到系统中
             </p>
-            <div className="p-4 rounded-xl text-sm max-w-xs" style={{ background: '#1e2030', border: '1px solid #2d3155', color: '#94a3b8' }}>
+            <div className="max-w-xs rounded-xl border border-border bg-surface-canvas p-4 text-body-sm font-light text-text-secondary">
               请联系你的雇主将你的钱包地址添加到 ChainPay 系统后再试
             </div>
           </div>
@@ -84,11 +83,10 @@ export default function EmployeePage() {
         {state === 'done' && (
           <>
             <RulesDone txHash={savedTxHash} />
-            <div className="mt-6">
+            <div className="mx-auto mt-6 w-full max-w-[560px]">
               <button
                 onClick={() => setShowAutoInvest(true)}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                style={{ background: '#1e2030', border: '1px solid #6366f1', color: '#a5b4fc' }}
+                className="min-h-touch w-full rounded-xl border border-border-interactive bg-surface-card py-3 text-body-sm font-light text-brand-primary shadow-sm transition-colors duration-normal ease-standard hover:border-border-interactive-strong"
               >
                 💰 配置自动定投理财
               </button>
