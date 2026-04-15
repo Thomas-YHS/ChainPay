@@ -1,13 +1,14 @@
 import { PAY_FREQUENCY_LABELS } from '../../../theme'
 import type { Employee } from '../../../store'
+import { colors } from '../../../styles/tokens'
 
 // Deterministic gradient based on first letter
 const GRADIENTS = [
-  'linear-gradient(135deg,#6366f1,#818cf8)',
-  'linear-gradient(135deg,#f59e0b,#fbbf24)',
-  'linear-gradient(135deg,#06b6d4,#22d3ee)',
-  'linear-gradient(135deg,#10b981,#34d399)',
-  'linear-gradient(135deg,#ef4444,#f87171)',
+  `linear-gradient(135deg, ${colors.brand.primary}, ${colors.brand.primaryHover})`,
+  `linear-gradient(135deg, ${colors.status.info}, #38bdf8)`,
+  `linear-gradient(135deg, ${colors.status.success}, #34d399)`,
+  `linear-gradient(135deg, ${colors.status.warning}, ${colors.accent.destructive})`,
+  `linear-gradient(135deg, ${colors.status.error}, #ff7a6a)`,
 ]
 function avatarGradient(name: string) {
   return GRADIENTS[name.charCodeAt(0) % GRADIENTS.length]
@@ -23,34 +24,32 @@ export default function EmployeeRow({ employee }: Props) {
 
   return (
     <div
-      className="flex items-center px-4 py-3 border-b"
-      style={{ borderColor: '#252840' }}
+      className="flex items-center border-b border-border px-4 py-3 transition-colors duration-normal ease-standard hover:bg-brand-primary/[0.04]"
     >
-      {/* Avatar */}
       <div
-        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold mr-3 flex-shrink-0"
+        className="mr-3 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-body-sm font-medium text-text-inverse"
         style={{ background: avatarGradient(employee.name) }}
       >
         {initial}
       </div>
-      {/* Info */}
+
       <div className="flex-1 min-w-0">
-        <div className="text-white text-sm font-semibold truncate">{employee.name}</div>
-        <div className="text-xs" style={{ color: '#94a3b8' }}>
+        <div className="truncate text-body-sm font-medium text-text-primary">{employee.name}</div>
+        <div className="text-caption font-medium text-text-secondary">
           ${employee.salary_amount} USDC · {freqLabel}
         </div>
       </div>
-      {/* Wallet */}
-      <div className="text-xs mr-4 font-mono hidden md:block" style={{ color: '#4b5563' }}>
+
+      <div className="cp-text-code mr-4 hidden text-text-secondary md:block">
         {employee.wallet_address.slice(0, 6)}...{employee.wallet_address.slice(-4)}
       </div>
-      {/* Status badge */}
+
       {employee.has_rules ? (
-        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#10b98120', color: '#10b981' }}>
+        <span className="rounded-full bg-status-success/10 px-2 py-0.5 text-caption font-medium text-status-success">
           规则已设
         </span>
       ) : (
-        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#f59e0b20', color: '#f59e0b' }}>
+        <span className="rounded-full border border-status-warning/30 bg-status-warning/10 px-2 py-0.5 text-caption font-medium text-status-warning">
           待设置
         </span>
       )}

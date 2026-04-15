@@ -20,7 +20,7 @@ export default function TxLink({ hash, chainId }: TxLinkProps) {
       href={explorerUrl(hash, chainId)}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-indigo-400 hover:text-indigo-300 text-xs font-mono"
+      className="cp-text-code text-status-info transition-colors duration-normal ease-standard hover:text-brand-primary"
     >
       {short} ↗
     </a>
