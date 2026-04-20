@@ -7,28 +7,43 @@ import TopNav from '../../shared/components/TopNav'
 import TxLink from '../../shared/components/TxLink'
 import { SUPPORTED_CHAINS, SUPPORTED_TOKENS, USDC_BASE, LIFI_DIAMOND_BASE, LIFI_API_KEY } from '../../../theme'
 
+interface EarnVaultProtocol {
+  name: string
+  logoUri?: string
+  url?: string
+}
+
 interface EarnVault {
-  id: string
+  id?: string
   address: string
-  protocol: string
+  protocol: string | EarnVaultProtocol
   name: string
   chainId: number
-  apy: string
-  tvlUsd: string
+  analytics?: {
+    apy?: { total?: number | null; base?: number | null }
+    tvl?: { usd?: string | number | null }
+  }
   isTransactional: boolean
+}
+
+function vaultKey(vault: EarnVault): string {
+  return `${vault.chainId}:${vault.address}`
+}
+
+function getProtocolName(protocol: EarnVault['protocol']): string {
+  if (typeof protocol === 'string') return protocol
+  return protocol?.name ?? 'Unknown'
 }
 
 type DepositState = 'idle' | 'approving' | 'quoting' | 'depositing' | 'success' | 'error'
 
-function formatAPY(apy: string): string {
-  const raw = parseFloat(apy)
-  if (isNaN(raw)) return 'N/A'
-  const pct = raw < 1 ? raw * 100 : raw
-  return pct.toFixed(2) + '%'
+function formatAPY(apy: number | null | undefined): string {
+  if (apy == null || isNaN(apy)) return 'N/A'
+  return apy.toFixed(2) + '%'
 }
 
-function formatTVL(tvl: string): string {
-  const n = parseFloat(tvl)
+function formatTVL(tvl: string | number | null | undefined): string {
+  const n = parseFloat(String(tvl ?? ''))
   if (isNaN(n)) return 'N/A'
   if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000) return '$' + (n / 1_000).toFixed(1) + 'K'
@@ -53,7 +68,7 @@ const DEPOSIT_STATUS_LABEL: Record<DepositState, string> = {
 
 export default function EarnDashboard() {
   const navigate = useNavigate()
-  const { address } = useAccount()
+  const { address, chainId: connectedChainId } = useAccount()
   const { sendTransactionAsync } = useSendTransaction()
   const { ensureAllowance } = useEnsureAllowance()
 
@@ -83,7 +98,7 @@ export default function EarnDashboard() {
     )
       .then(results => {
         const all = results.flat().filter(v => v.isTransactional)
-        all.sort((a, b) => parseFloat(b.apy) - parseFloat(a.apy))
+        all.sort((a, b) => (b.analytics?.apy?.total ?? 0) - (a.analytics?.apy?.total ?? 0))
         setVaults(all)
       })
       .catch(e => setLoadError(e.message ?? 'Failed to load vaults'))
@@ -93,7 +108,7 @@ export default function EarnDashboard() {
   useEffect(() => { loadVaults() }, [])
 
   function selectVault(id: string) {
-    if (depositState !== 'idle') return
+    if (depositState !== 'idle' && depositState !== 'error') return
     if (selectedId === id) {
       setSelectedId(null)
       return
@@ -107,14 +122,21 @@ export default function EarnDashboard() {
 
   async function handleDeposit(vault: EarnVault) {
     if (!address || !amount || parseFloat(amount) <= 0) return
+    if (connectedChainId !== vault.chainId) {
+      setDepositError(`请先在钱包切换到 ${CHAIN_META[vault.chainId]?.label ?? vault.chainId} 网络`)
+      setDepositState('error')
+      return
+    }
     setDepositState('approving')
     setDepositError(null)
     setDepositTxHash(null)
     try {
-      const amountRaw = parseUnits(amount, 6)
+      // 截断到 6 位小数，避免 parseUnits 因精度溢出抛错
+      const truncated = Math.floor(parseFloat(amount) * 1e6) / 1e6
+      const amountRaw = parseUnits(truncated.toFixed(6), 6)
       const usdcAddress = (SUPPORTED_TOKENS[vault.chainId]?.find(t => t.symbol === 'USDC')?.address ?? USDC_BASE) as `0x${string}`
 
-      await ensureAllowance(usdcAddress, LIFI_DIAMOND_BASE as `0x${string}`, amountRaw)
+      await ensureAllowance(usdcAddress, LIFI_DIAMOND_BASE as `0x${string}`, amountRaw, vault.chainId)
 
       setDepositState('quoting')
       const params = new URLSearchParams({
@@ -228,26 +250,26 @@ export default function EarnDashboard() {
           <div className="flex flex-col gap-3">
             {vaults.map(vault => {
               const chain = CHAIN_META[vault.chainId]
-              const isOpen = selectedId === vault.id
-              const isThisDepositing = isOpen && depositState !== 'idle'
+              const isOpen = selectedId === vaultKey(vault)
+              const isThisDepositing = isOpen && depositState !== 'idle' && depositState !== 'error' && depositState !== 'success'
 
               return (
                 <div
-                  key={vault.id}
+                  key={vaultKey(vault)}
                   className="rounded-xl overflow-hidden"
                   style={{ background: '#1e2030', border: `1px solid ${isOpen ? '#6366f1' : '#2d3155'}` }}
                 >
                   {/* Vault summary row */}
                   <button
                     className="w-full p-4 text-left flex items-center gap-4"
-                    onClick={() => selectVault(vault.id)}
+                    onClick={() => selectVault(vaultKey(vault))}
                   >
                     {/* Protocol initial */}
                     <div
                       className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold"
                       style={{ background: '#252840', color: '#6366f1', fontFamily: 'monospace' }}
                     >
-                      {vault.protocol.slice(0, 2).toUpperCase()}
+                      {getProtocolName(vault.protocol).slice(0, 2).toUpperCase()}
                     </div>
 
                     {/* Info */}
@@ -263,7 +285,7 @@ export default function EarnDashboard() {
                           </span>
                         )}
                       </div>
-                      <span className="text-xs" style={{ color: '#6366f1' }}>{vault.protocol}</span>
+                      <span className="text-xs" style={{ color: '#6366f1' }}>{getProtocolName(vault.protocol)}</span>
                     </div>
 
                     {/* APY + TVL */}
@@ -276,10 +298,10 @@ export default function EarnDashboard() {
                           fontVariantNumeric: 'tabular-nums',
                         }}
                       >
-                        {formatAPY(vault.apy)}
+                        {formatAPY(vault.analytics?.apy?.total)}
                       </div>
                       <div className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>
-                        TVL {formatTVL(vault.tvlUsd)}
+                        TVL {formatTVL(vault.analytics?.tvl?.usd)}
                       </div>
                     </div>
 
@@ -305,6 +327,9 @@ export default function EarnDashboard() {
                         </div>
                       ) : (
                         <div className="pt-3 flex flex-col gap-3">
+                          {!address && (
+                            <p className="text-xs" style={{ color: '#f59e0b' }}>⚠ 请先连接钱包</p>
+                          )}
                           <div className="flex items-center gap-2">
                             <input
                               type="number"

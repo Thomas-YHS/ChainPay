@@ -79,7 +79,11 @@ func (h *PayrollHandler) Execute(c *gin.Context) {
 func (h *PayrollHandler) Confirm(c *gin.Context) {
 	employer := c.GetString("wallet")
 	idStr := c.Param("id")
-	id, _ := strconv.ParseUint(idStr, 10, 64)
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid id", "data": nil})
+		return
+	}
 
 	var req struct {
 		TxHash string `json:"tx_hash" binding:"required"`
@@ -105,7 +109,7 @@ func (h *PayrollHandler) Confirm(c *gin.Context) {
 
 	h.payrollSvc.DB().Model(&logEntry).Updates(map[string]interface{}{
 		"tx_hash":    req.TxHash,
-		"status":     "pending",
+		"status":     "sent",
 		"updated_at": time.Now().Unix(),
 	})
 

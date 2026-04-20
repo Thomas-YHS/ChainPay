@@ -79,11 +79,11 @@ func runScheduledPayroll(employeeSvc *EmployeeService, payrollSvc *PayrollServic
 			Where("wallet_address = ?", emp.WalletAddress).
 			Update("next_pay_date", nextDate)
 		if res.Error != nil {
-			log.Printf("Cron: failed to update next_pay_date for %s (log_id=%d): %v",
+			// 日期更新失败 → 不记录成功，下次 cron 可能重复处理，需人工介入
+			log.Printf("Cron: CRITICAL — failed to update next_pay_date for %s (log_id=%d): %v — skipping to prevent duplicate payout",
 				emp.WalletAddress, result.ID, res.Error)
-		} else {
-			log.Printf("Cron: payout prepared for %s (log_id=%d)",
-				emp.WalletAddress, result.ID)
+			continue
 		}
+		log.Printf("Cron: payout prepared for %s (log_id=%d)", emp.WalletAddress, result.ID)
 	}
 }

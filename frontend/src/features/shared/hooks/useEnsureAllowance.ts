@@ -1,4 +1,5 @@
-import { useAccount, usePublicClient, useSendTransaction } from 'wagmi'
+import { useAccount, useSendTransaction, useConfig } from 'wagmi'
+import { getPublicClient } from '@wagmi/core'
 import { encodeFunctionData } from 'viem'
 
 const ERC20_ABI = [
@@ -8,15 +9,19 @@ const ERC20_ABI = [
 
 export function useEnsureAllowance() {
   const { address } = useAccount()
-  const publicClient = usePublicClient()
+  const config = useConfig()
   const { sendTransactionAsync } = useSendTransaction()
 
   async function ensureAllowance(
     tokenAddress: `0x${string}`,
     approvalAddress: `0x${string}`,
-    amount: bigint
+    amount: bigint,
+    chainId: number
   ) {
-    if (!address || !publicClient) throw new Error('Wallet not connected')
+    if (!address) throw new Error('Wallet not connected')
+    const publicClient = getPublicClient(config, { chainId })
+    if (!publicClient) throw new Error(`Chain ${chainId} not configured`)
+
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
@@ -31,6 +36,7 @@ export function useEnsureAllowance() {
           functionName: 'approve',
           args: [approvalAddress, amount],
         }),
+        chainId,
       })
       await publicClient.waitForTransactionReceipt({ hash: approveTx })
     }

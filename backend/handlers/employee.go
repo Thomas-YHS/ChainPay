@@ -235,9 +235,9 @@ func (h *EmployeeHandler) UpdateAutoInvest(c *gin.Context) {
 	if body.Enabled && body.InvestType == "percentage" {
 		// basis points: 0-10000 (0%-100%)
 		var bp int64
-		fmt.Sscanf(body.InvestValue, "%d", &bp)
-		if bp < 0 || bp > 10000 {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "percentage must be between 0 and 10000 basis points (0-100%)", "data": nil})
+		n, scanErr := fmt.Sscanf(body.InvestValue, "%d", &bp)
+		if scanErr != nil || n != 1 || bp < 0 || bp > 10000 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "percentage must be an integer between 0 and 10000 basis points (0-100%)", "data": nil})
 			return
 		}
 	}
@@ -313,6 +313,10 @@ func (h *EmployeeHandler) SaveRules(c *gin.Context) {
 
 	rules := make([]services.Rule, 0, len(body))
 	for _, r := range body {
+		if !walletRegex.MatchString(r.TokenAddress) {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid token_address format: " + r.TokenAddress, "data": nil})
+			return
+		}
 		rules = append(rules, services.Rule{
 			ChainID:      new(big.Int).SetInt64(r.ChainID),
 			TokenAddress: common.HexToAddress(r.TokenAddress),

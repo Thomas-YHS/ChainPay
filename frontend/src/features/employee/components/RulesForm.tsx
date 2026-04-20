@@ -30,7 +30,10 @@ export default function RulesForm({ onSaved }: Props) {
   }, [])
 
   const total = rules.reduce((sum, r) => sum + Number(r.percentage), 0)
-  const canSubmit = total === 100 && rules.length > 0
+  const hasDuplicate = rules.some((r, i) =>
+    rules.findIndex(x => x.chainId === r.chainId && x.tokenAddress === r.tokenAddress) !== i
+  )
+  const canSubmit = total === 100 && rules.length > 0 && !hasDuplicate
 
   function addRule() {
     if (rules.length >= 5) return
@@ -131,6 +134,7 @@ export default function RulesForm({ onSaved }: Props) {
                     min={1}
                     max={100}
                     value={rule.percentage}
+                    onFocus={e => e.target.select()}
                     onChange={e => updateRule(i, 'percentage', Number(e.target.value))}
                     style={{ ...selectStyle, flex: 1 }}
                   />
@@ -153,6 +157,7 @@ export default function RulesForm({ onSaved }: Props) {
         </div>
       </div>
 
+      {hasDuplicate && <p className="text-sm mb-3" style={{ color: '#ef4444' }}>存在重复的链/Token 组合，请修改后提交</p>}
       {error && <p className="text-sm mb-3" style={{ color: '#ef4444' }}>{error}</p>}
 
       <button

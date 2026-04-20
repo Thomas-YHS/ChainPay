@@ -105,7 +105,9 @@ export default function EmployeePage() {
                 📈 Earn 收益 — 存入 vault 赚取利息
               </button>
             </div>
-            <div className="mt-6">
+           
+
+            {/* <div className="mt-6">
               <button
                 onClick={() => setShowAutoInvest(true)}
                 className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
@@ -113,7 +115,7 @@ export default function EmployeePage() {
               >
                 💰 配置自动定投理财
               </button>
-            </div>
+            </div> */}
           </>
         )}
 

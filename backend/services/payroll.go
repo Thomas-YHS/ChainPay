@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"strings"
@@ -70,8 +71,11 @@ func (s *PayrollService) ExecutePayout(
 	// 为每条规则创建 pending PayrollLog
 	now := time.Now().Unix()
 	var firstLog *db.PayrollLog
+	amountBig, ok := new(big.Int).SetString(salaryStr, 10)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid salary amount: %s", salaryStr)
+	}
 	for _, rule := range rules {
-		amountBig, _ := new(big.Int).SetString(salaryStr, 10)
 		ruleAmount := new(big.Int).Mul(amountBig, rule.Percentage)
 		ruleAmount = new(big.Int).Div(ruleAmount, big.NewInt(10000))
 		if ruleAmount.Cmp(big.NewInt(0)) == 0 {

@@ -11,7 +11,7 @@ type PayoutState = 'idle' | 'executing' | 'success' | 'error'
 const BASE_CHAIN_ID = 8453
 
 export default function PayoutPage() {
-  const { address } = useAccount()
+  const { address, chainId: connectedChainId } = useAccount()
   const { getEmployees, triggerPayout, confirmPayout } = useBackend()
   const { sendTransactionAsync } = useSendTransaction()
   const { ensureAllowance } = useEnsureAllowance()
@@ -37,6 +37,11 @@ export default function PayoutPage() {
   //  4. 前端通知后端记录 tx_hash
   async function handlePayout() {
     if (!selected || !address) return
+    if (connectedChainId !== BASE_CHAIN_ID) {
+      setErrorMsg('请先在钱包中切换到 Base 网络（Chain ID: 8453）后再发薪')
+      setState('error')
+      return
+    }
     setState('executing')
     setTxHashes([])
     setErrorMsg(undefined)
@@ -63,7 +68,8 @@ export default function PayoutPage() {
           await ensureAllowance(
             USDC_BASE as `0x${string}`,
             lifiData.estimate.approvalAddress as `0x${string}`,
-            BigInt(lifiData.action.fromAmount)
+            BigInt(lifiData.action.fromAmount),
+            8453 // Base Mainnet
           )
         }
 
