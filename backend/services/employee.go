@@ -38,13 +38,14 @@ type EmployeeService struct {
 	cfg       *config.Config
 	ethClient *ethclient.Client
 	nonceMgr  *NonceManager
+	rules     RulesProvider
 }
 
 // NewEmployeeService accepts a shared ethclient and NonceManager injected from main.
 // Both may be nil when EXECUTOR_PRIVATE_KEY / CHAIN_PAY_CONTRACT are not set;
 // on-chain calls will return a clear error in that case.
-func NewEmployeeService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager) *EmployeeService {
-	return &EmployeeService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm}
+func NewEmployeeService(database *gorm.DB, cfg *config.Config, client *ethclient.Client, nm *NonceManager, rules RulesProvider) *EmployeeService {
+	return &EmployeeService{db: database, cfg: cfg, ethClient: client, nonceMgr: nm, rules: rules}
 }
 
 type CreateEmployeeRequest struct {
@@ -74,7 +75,7 @@ func (s *EmployeeService) Create(req CreateEmployeeRequest, employerAddress stri
 		return nil, errors.New("salary_amount must be positive")
 	}
 
-	if s.cfg.Blockchain.ExecutorPrivateKey != "" && s.cfg.Blockchain.ChainPayContract != "" {
+	if s.ethClient != nil && s.cfg.Blockchain.ExecutorPrivateKey != "" && s.cfg.Blockchain.ChainPayContract != "" {
 		if err := s.registerOnChain(context.Background(), req.WalletAddress); err != nil {
 			return nil, fmt.Errorf("on-chain registration failed: %w", err)
 		}
@@ -132,6 +133,17 @@ func (s *EmployeeService) Delete(walletAddress, employerAddress string) error {
 		return errors.New("forbidden: not the employer of this employee")
 	}
 	return s.db.Where("wallet_address = ? AND employer_address = ?", walletAddress, employerAddress).Delete(&db.Employee{}).Error
+}
+
+// RulesMode 返回当前配置的规则存储模式（"chain" 或 "backend"）。
+func (s *EmployeeService) RulesMode() string {
+	return s.cfg.Blockchain.RulesMode
+}
+
+// SaveRules 将员工规则保存到当前配置的存储后端。
+// chain 模式下为空操作（链上由前端 setRules 负责）。
+func (s *EmployeeService) SaveRules(employeeAddress string, rules []Rule) error {
+	return s.rules.SaveRules(employeeAddress, rules)
 }
 
 func (s *EmployeeService) UpdateRulesStatus(walletAddress string, hasRules bool) error {

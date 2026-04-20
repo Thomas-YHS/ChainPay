@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAccount } from 'wagmi'
 import { useContract } from '../../shared/hooks/useContract'
+import { useBackend } from '../../shared/hooks/useBackend'
 import { SUPPORTED_CHAINS, SUPPORTED_TOKENS } from '../../../theme'
 
 interface Rule {
@@ -15,13 +17,23 @@ interface Props {
 const EMPTY_RULE: Rule = { chainId: 8453, tokenAddress: '0x0000000000000000000000000000000000000000', percentage: 0 }
 
 export default function RulesForm({ onSaved }: Props) {
+  const { address } = useAccount()
   const { setRules } = useContract()
+  const { getRulesMode, saveRules } = useBackend()
+  const [mode, setMode] = useState<'chain' | 'backend' | null>(null)
   const [rules, setRulesState] = useState<Rule[]>([{ ...EMPTY_RULE, percentage: 100 }])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    getRulesMode().then(setMode)
+  }, [])
+
   const total = rules.reduce((sum, r) => sum + Number(r.percentage), 0)
-  const canSubmit = total === 100 && rules.length > 0
+  const hasDuplicate = rules.some((r, i) =>
+    rules.findIndex(x => x.chainId === r.chainId && x.tokenAddress === r.tokenAddress) !== i
+  )
+  const canSubmit = total === 100 && rules.length > 0 && !hasDuplicate
 
   function addRule() {
     if (rules.length >= 5) return
@@ -39,17 +51,28 @@ export default function RulesForm({ onSaved }: Props) {
   }
 
   async function handleSubmit() {
-    if (!canSubmit) return
+    if (!canSubmit || !address) return
     setSubmitting(true)
     setError(null)
     try {
-      const contractRules = rules.map((r) => ({
-        chainId: BigInt(r.chainId),
-        tokenAddress: r.tokenAddress as `0x${string}`,
-        basisPoints: BigInt(Math.round(r.percentage * 100)),
-      }))
-      const txHash = await setRules(contractRules)
-      onSaved(txHash)
+      if (mode === 'backend') {
+        // 后端模式：直接 POST API，无需钱包签名
+        await saveRules(address, rules.map(r => ({
+          chain_id: r.chainId,
+          token_address: r.tokenAddress,
+          percentage: Math.round(r.percentage * 100), // 转为基数 10000
+        })))
+        onSaved('') // 后端模式无 txHash
+      } else {
+        // 链上模式：签名并广播 setRules
+        const contractRules = rules.map(r => ({
+          chainId: BigInt(r.chainId),
+          tokenAddress: r.tokenAddress as `0x${string}`,
+          basisPoints: BigInt(Math.round(r.percentage * 100)),
+        }))
+        const txHash = await setRules(contractRules)
+        onSaved(txHash)
+      }
     } catch (e: any) {
       setError(e.shortMessage ?? e.message ?? '提交失败')
     } finally {
@@ -67,10 +90,16 @@ export default function RulesForm({ onSaved }: Props) {
     flex: 1,
   }
 
+  const isBackend = mode === 'backend'
+
   return (
     <div className="max-w-md mx-auto py-8 px-4">
       <h2 className="text-white text-xl font-bold mb-1">设置接收规则</h2>
-      <p className="text-sm mb-1" style={{ color: '#f59e0b' }}>⚠ 规则设置后不可修改，请仔细确认</p>
+      {isBackend ? (
+        <p className="text-sm mb-1" style={{ color: '#10b981' }}>✓ 后端模式：规则保存到服务器，可重新提交修改</p>
+      ) : (
+        <p className="text-sm mb-1" style={{ color: '#f59e0b' }}>⚠ 链上模式：规则写入合约后不可修改，请仔细确认</p>
+      )}
       <p className="text-xs mb-6" style={{ color: '#94a3b8' }}>最多添加 5 条规则，比例总和必须等于 100%</p>
 
       <div className="flex flex-col gap-3 mb-4">
@@ -87,13 +116,14 @@ export default function RulesForm({ onSaved }: Props) {
               <div className="flex gap-2">
                 <select
                   style={selectStyle}
-                  value={rule.chainId}
+                  value={String(rule.chainId)}
                   onChange={e => {
-                    updateRule(i, 'chainId', Number(e.target.value))
-                    updateRule(i, 'tokenAddress', '0x0000000000000000000000000000000000000000')
+                    const updated = [...rules]
+                    updated[i] = { ...updated[i], chainId: Number(e.target.value), tokenAddress: '0x0000000000000000000000000000000000000000' }
+                    setRulesState(updated)
                   }}
                 >
-                  {SUPPORTED_CHAINS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  {SUPPORTED_CHAINS.map(c => <option key={c.id} value={String(c.id)}>{c.label}</option>)}
                 </select>
                 <select style={selectStyle} value={rule.tokenAddress} onChange={e => updateRule(i, 'tokenAddress', e.target.value)}>
                   {tokens.map(t => <option key={t.symbol} value={t.address}>{t.symbol}</option>)}
@@ -104,6 +134,7 @@ export default function RulesForm({ onSaved }: Props) {
                     min={1}
                     max={100}
                     value={rule.percentage}
+                    onFocus={e => e.target.select()}
                     onChange={e => updateRule(i, 'percentage', Number(e.target.value))}
                     style={{ ...selectStyle, flex: 1 }}
                   />
@@ -126,15 +157,18 @@ export default function RulesForm({ onSaved }: Props) {
         </div>
       </div>
 
+      {hasDuplicate && <p className="text-sm mb-3" style={{ color: '#ef4444' }}>存在重复的链/Token 组合，请修改后提交</p>}
       {error && <p className="text-sm mb-3" style={{ color: '#ef4444' }}>{error}</p>}
 
       <button
         onClick={handleSubmit}
-        disabled={!canSubmit || submitting}
+        disabled={!canSubmit || submitting || mode === null}
         className="w-full py-3 rounded-xl text-sm font-semibold"
         style={{ background: canSubmit && !submitting ? '#6366f1' : '#252840', color: canSubmit && !submitting ? '#fff' : '#4b5563' }}
       >
-        {submitting ? '写入合约中...' : '确认并写入合约'}
+        {submitting
+          ? (isBackend ? '保存中...' : '写入合约中...')
+          : (isBackend ? '保存规则 →' : '写入链上 →')}
       </button>
     </div>
   )

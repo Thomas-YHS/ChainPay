@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chainpay/backend/db"
 	"github.com/chainpay/backend/services"
@@ -22,6 +23,7 @@ func NewPayrollHandler(payrollSvc *services.PayrollService, employeeSvc *service
 }
 
 // POST /api/v1/payroll/execute
+// 前端驱动模式：后端返回员工的分账规则，前端自行构造 LiFi 交易并让雇主签名广播。
 func (h *PayrollHandler) Execute(c *gin.Context) {
 	employer := c.GetString("wallet")
 	var req struct {
@@ -41,28 +43,80 @@ func (h *PayrollHandler) Execute(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
 		return
 	}
-	if !emp.HasRules {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "employee has not set rules yet", "data": nil})
+	// 归属校验在 ExecutePayout 中进行
+	rules, log, err := h.payrollSvc.ExecutePayout(employer, req.EmployeeWallet, emp.SalaryAmount, "manual")
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "forbidden") {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": msg, "data": nil})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": msg, "data": nil})
+		return
+	}
+	// 转换 Rule 为前端需要的格式
+	type RuleResponse struct {
+		ChainID      string `json:"chainId"`
+		TokenAddress string `json:"tokenAddress"`
+		Percentage   string `json:"percentage"`
+	}
+	rulesData := make([]RuleResponse, len(rules))
+	for i, r := range rules {
+		rulesData[i] = RuleResponse{
+			ChainID:      r.ChainID.String(),
+			TokenAddress: r.TokenAddress.Hex(),
+			Percentage:   r.Percentage.String(),
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "payout prepared", "data": gin.H{
+		"log_id": log.ID,
+		"rules":  rulesData,
+	}})
+}
+
+// POST /api/v1/payroll/:id/confirm
+// 前端广播成功后调用，传入 tx_hash 更新日志状态并启动异步回执查询。
+func (h *PayrollHandler) Confirm(c *gin.Context) {
+	employer := c.GetString("wallet")
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid id", "data": nil})
 		return
 	}
 
-	log, err := h.payrollSvc.ExecutePayout(employer, req.EmployeeWallet, emp.SalaryAmount, "manual")
-	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "not configured") || strings.Contains(msg, "no rules") {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": msg, "data": nil})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "contract execution failed: " + msg, "data": nil})
+	var req struct {
+		TxHash string `json:"tx_hash" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "tx_hash is required", "data": nil})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "payout executed", "data": gin.H{
-		"log_id":     log.ID,
-		"tx_hash":    log.TxHash,
-		"amount":     log.Amount.String(),
-		"status":    log.Status,
-		"created_at": log.CreatedAt,
-	}})
+
+	var logEntry db.PayrollLog
+	if err := h.payrollSvc.DB().First(&logEntry, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "log not found", "data": nil})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	if !strings.EqualFold(logEntry.EmployerAddress, employer) {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "forbidden", "data": nil})
+		return
+	}
+
+	h.payrollSvc.DB().Model(&logEntry).Updates(map[string]interface{}{
+		"tx_hash":    req.TxHash,
+		"status":     "sent",
+		"updated_at": time.Now().Unix(),
+	})
+
+	// 启动异步回执查询（后端无 ethClient，此处暂不实现链上查询）
+	go h.payrollSvc.AwaitReceipt(req.TxHash, logEntry.ID)
+
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "confirmed", "data": nil})
 }
 
 // GET /api/v1/payroll/logs

@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
-	Database   DatabaseConfig  `yaml:"database"`
+	Database   DatabaseConfig   `yaml:"database"`
 	Blockchain BlockchainConfig `yaml:"blockchain"`
 }
 
@@ -32,7 +32,7 @@ type BlockchainConfig struct {
 	LiFiAPIKey         string `yaml:"lifi_api_key"`
 	EthRPCURL          string `yaml:"eth_rpc_url"`
 	CronEnabled        bool   `yaml:"cron_enabled"`
-	EarnEnabled        bool   `yaml:"earn_enabled"`
+	RulesMode          string `yaml:"rules_mode"` // "chain" 或 "backend"，默认 "backend"
 }
 
 // Load reads config from config.yaml.
@@ -58,9 +58,6 @@ func Load() (*Config, error) {
 	if cfg.Database.Password == "" {
 		return nil, fmt.Errorf("database.password is required in config.yaml")
 	}
-	if cfg.Blockchain.ExecutorPrivateKey == "" {
-		return nil, fmt.Errorf("blockchain.executor_private_key is required for Pure Composer payroll")
-	}
 
 	// Apply defaults
 	if cfg.Server.Port == "" {
@@ -74,6 +71,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Blockchain.EthRPCURL == "" {
 		cfg.Blockchain.EthRPCURL = "https://mainnet.base.org"
+	}
+	if cfg.Blockchain.RulesMode == "" {
+		cfg.Blockchain.RulesMode = "backend"
 	}
 
 	return &cfg, nil

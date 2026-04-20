@@ -9,8 +9,6 @@ import (
 	"github.com/chainpay/backend/handlers"
 	"github.com/chainpay/backend/router"
 	"github.com/chainpay/backend/services"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 func main() {
@@ -30,49 +28,32 @@ func main() {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
 
-	// H-2 + H-3 fixed: create shared ethclient and NonceManager once at startup.
-	// Propagate errors instead of discarding them.
-	var ethClient *ethclient.Client
-	var nonceMgr *services.NonceManager
-	if cfg.Blockchain.ExecutorPrivateKey != "" && cfg.Blockchain.ChainPayContract != "" {
-		ec, err := services.DialEthClient(cfg.Blockchain.EthRPCURL)
-		if err != nil {
-			log.Fatalf("failed to dial ethclient: %v", err)
-		}
-		ethClient = ec
-
-		privateKey, err := crypto.HexToECDSA(cfg.Blockchain.ExecutorPrivateKey)
-		if err != nil {
-			log.Fatalf("invalid executor private key: %v", err)
-		}
-		nonceMgr = services.NewNonceManager(ethClient, crypto.PubkeyToAddress(privateKey.PublicKey))
-		log.Printf("Executor wallet: %s", nonceMgr.Addr().Hex())
+	// 根据配置选择规则存储实现
+	var rulesProvider services.RulesProvider
+	if cfg.Blockchain.RulesMode == "backend" {
+		rulesProvider = services.NewDBRulesProvider(gormDB)
+		log.Println("Rules mode: backend (PostgreSQL)")
 	} else {
-		log.Println("WARNING: EXECUTOR_PRIVATE_KEY or CHAIN_PAY_CONTRACT not set — on-chain calls disabled")
+		rulesProvider = services.NewChainRulesProvider(cfg, nil)
+		log.Println("Rules mode: chain (contract)")
 	}
 
-	// Init services (inject shared ethclient and nonce manager)
-	employeeSvc := services.NewEmployeeService(gormDB, cfg, ethClient, nonceMgr)
-	earnSvc := services.NewEarnService(cfg, ethClient, nonceMgr)
-	payrollSvc := services.NewPayrollService(gormDB, cfg, ethClient, nonceMgr, earnSvc)
+	// Init services（雇主钱包直发架构：后端不持有私钥，不连接链）
+	employeeSvc := services.NewEmployeeService(gormDB, cfg, nil, nil, rulesProvider)
+	payrollSvc := services.NewPayrollService(gormDB, cfg, rulesProvider)
 
 	// Init handlers
 	employeeHandler := handlers.NewEmployeeHandler(employeeSvc)
 	payrollHandler := handlers.NewPayrollHandler(payrollSvc, employeeSvc)
-	vaultHandler := handlers.NewVaultHandler(earnSvc)
+	configHandler := handlers.NewConfigHandler(cfg)
 
-	// Start cron only if executor is fully configured
-	if cfg.Blockchain.ExecutorPrivateKey != "" && cfg.Blockchain.ChainPayContract != "" {
-		services.StartCron(employeeSvc, payrollSvc, cfg.Blockchain.CronEnabled)
-		if cfg.Blockchain.CronEnabled {
-			log.Println("Cron job started")
-		}
-	} else {
-		log.Println("WARNING: executor not configured, cron disabled")
+	// 注意：cron 发薪在雇主钱包直发架构下已禁用（需要后端签名）
+	if cfg.Blockchain.CronEnabled {
+		log.Println("WARNING: cron payroll disabled in employer-direct mode")
 	}
 
 	// Start server
-	r := router.Setup(employeeHandler, payrollHandler, vaultHandler)
+	r := router.Setup(employeeHandler, payrollHandler, configHandler)
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
 	log.Printf("ChainPay backend starting on %s", addr)
 	if err := r.Run(addr); err != nil {

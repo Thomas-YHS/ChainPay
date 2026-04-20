@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RainbowKitProvider, getDefaultConfig, darkTheme } from '@rainbow-me/rainbowkit'
-import { base } from 'viem/chains'
+import { base, arbitrum, gnosis, optimism } from 'viem/chains'
 import { createConfig } from '@lifi/sdk'
 import App from './App'
 import '@rainbow-me/rainbowkit/styles.css'
@@ -15,7 +15,7 @@ createConfig({ integrator: 'ChainPay' })
 const wagmiConfig = getDefaultConfig({
   appName: 'ChainPay',
   projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string,
-  chains: [base],
+  chains: [base, arbitrum, gnosis, optimism],
 })
 
 const queryClient = new QueryClient()

@@ -1,4 +1,6 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { useAccount } from 'wagmi'
 import TopNav from '../../shared/components/TopNav'
 
 const navItems = [
@@ -8,6 +10,13 @@ const navItems = [
 ]
 
 export default function EmployerLayout() {
+  const navigate = useNavigate()
+  const { isConnected } = useAccount()
+
+  useEffect(() => {
+    if (!isConnected) navigate('/')
+  }, [isConnected, navigate])
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f1117' }}>
       <TopNav />

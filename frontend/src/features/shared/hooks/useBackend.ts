@@ -81,5 +81,43 @@ export function useBackend() {
     return json.data
   }
 
-  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest }
+  async function triggerPayout(employeeWallet: string): Promise<{ log_id: number; rules: { chainId: string; tokenAddress: string; percentage: string }[] }> {
+    const res = await fetch(`${API_URL}/payroll/execute`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ employee_wallet: employeeWallet }),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+    return json.data
+  }
+
+  async function confirmPayout(logId: number, txHash: string): Promise<void> {
+    const res = await fetch(`${API_URL}/payroll/${logId}/confirm`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ tx_hash: txHash }),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+  }
+
+  async function getRulesMode(): Promise<'chain' | 'backend'> {
+    const res = await fetch(`${API_URL}/config/rules-mode`)
+    const json = await res.json()
+    if (json.code !== 200) return 'chain' // 默认回退到 chain
+    return json.data.mode as 'chain' | 'backend'
+  }
+
+  async function saveRules(wallet: string, rules: { chain_id: number; token_address: string; percentage: number }[]): Promise<void> {
+    const res = await fetch(`${API_URL}/employees/${wallet}/rules`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(rules),
+    })
+    const json = await res.json()
+    if (json.code !== 200) throw new Error(json.message)
+  }
+
+  return { getEmployees, getEmployeeByWallet, addEmployee, getPayrollLogs, getVaults, getAutoInvest, updateAutoInvest, triggerPayout, confirmPayout, getRulesMode, saveRules }
 }

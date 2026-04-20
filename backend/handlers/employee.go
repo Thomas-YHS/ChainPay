@@ -3,11 +3,13 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/chainpay/backend/services"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -233,9 +235,9 @@ func (h *EmployeeHandler) UpdateAutoInvest(c *gin.Context) {
 	if body.Enabled && body.InvestType == "percentage" {
 		// basis points: 0-10000 (0%-100%)
 		var bp int64
-		fmt.Sscanf(body.InvestValue, "%d", &bp)
-		if bp < 0 || bp > 10000 {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "percentage must be between 0 and 10000 basis points (0-100%)", "data": nil})
+		n, scanErr := fmt.Sscanf(body.InvestValue, "%d", &bp)
+		if scanErr != nil || n != 1 || bp < 0 || bp > 10000 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "percentage must be an integer between 0 and 10000 basis points (0-100%)", "data": nil})
 			return
 		}
 	}
@@ -259,4 +261,72 @@ func (h *EmployeeHandler) UpdateAutoInvest(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "auto-invest config updated", "data": nil})
+}
+
+// POST /api/v1/employees/:wallet_address/rules
+// 仅在 rules_mode: "backend" 时有效；chain 模式返回 405。
+func (h *EmployeeHandler) SaveRules(c *gin.Context) {
+	if h.svc.RulesMode() != "backend" {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{"code": 405, "message": "rules_mode is 'chain': use setRules on the contract", "data": nil})
+		return
+	}
+
+	wallet := c.Param("wallet_address")
+	caller := c.GetString("wallet")
+
+	// 只允许员工本人提交自己的规则
+	emp, err := h.svc.GetByWallet(wallet)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "employee not found", "data": nil})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	if !strings.EqualFold(emp.WalletAddress, caller) {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "message": "forbidden: you are not this employee", "data": nil})
+		return
+	}
+
+	var body []struct {
+		ChainID      int64  `json:"chain_id"`
+		TokenAddress string `json:"token_address"`
+		Percentage   int64  `json:"percentage"` // 基数 10000
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid request body", "data": nil})
+		return
+	}
+	if len(body) == 0 || len(body) > 5 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "rules must be between 1 and 5", "data": nil})
+		return
+	}
+	var total int64
+	for _, r := range body {
+		total += r.Percentage
+	}
+	if total != 10000 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "percentages must sum to 10000", "data": nil})
+		return
+	}
+
+	rules := make([]services.Rule, 0, len(body))
+	for _, r := range body {
+		if !walletRegex.MatchString(r.TokenAddress) {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid token_address format: " + r.TokenAddress, "data": nil})
+			return
+		}
+		rules = append(rules, services.Rule{
+			ChainID:      new(big.Int).SetInt64(r.ChainID),
+			TokenAddress: common.HexToAddress(r.TokenAddress),
+			Percentage:   new(big.Int).SetInt64(r.Percentage),
+		})
+	}
+
+	if err := h.svc.SaveRules(wallet, rules); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error(), "data": nil})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "rules saved", "data": nil})
 }
